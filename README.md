@@ -1,51 +1,65 @@
-# druckkultur Portal – Version 2.11
+# druckkultur Portal – Version 2.12
 
-## Wichtigste Korrektur
+## Neu in Version 2.12
 
-Die Portal-App verwendet unter `https://www.druckkultur.de/app` ausschließlich folgende API:
+### Nachrichten in richtiger Reihenfolge
 
-```text
-https://www.druckkultur.de/app/api/...
-```
+- Nachrichten innerhalb einer Unterhaltung werden streng chronologisch nach `createdAt` sortiert.
+- Jede Nachricht zeigt ihre Uhrzeit.
+- Zwischen verschiedenen Tagen erscheint eine Datumstrennung wie „Heute“, „Gestern“ oder das konkrete Datum.
+- Die Unterhaltungsübersicht ist nach der jeweils letzten Nachricht sortiert. Das zuletzt aktive Gespräch steht oben.
+- In der Übersicht wird neben jedem Gespräch die Uhrzeit beziehungsweise das Datum der letzten Nachricht angezeigt.
 
-Ein automatischer Wechsel zu `https://www.druckkultur.de/api/...` findet nicht mehr statt. Dadurch können Kunden- und Mitarbeiterkonten nicht mehr unbemerkt auf verschiedene Webflow-Datenbanken zugreifen.
+### Projekte als skalierbare Liste
 
-## Anzeige in der Sidebar
+Die Projektseite verwendet keine Kacheln mehr. Stattdessen gibt es eine kompakte Tabelle mit:
 
-Nach erfolgreicher Verbindung steht unten links beispielsweise:
+- Projektname, Projektnummer und Kategorie
+- Status
+- nächstem Schritt und Fälligkeit
+- Ansprechpartnern auf Kunden- und druckkultur-Seite
+- Liefertermin
+- Fortschritt
+- Kennzeichnung neuer Projekte
 
-```text
-Gemeinsam gespeichert
-Datenstand #21 · DB 821bb709 · API www.druckkultur.de/app
-Version 2.11
-```
+Die Tabellenüberschrift bleibt beim Scrollen sichtbar. Die Ansicht ist auch für große Projektmengen ausgelegt.
 
-Auf allen Rechnern müssen DB-Kennung und API-Ziel identisch sein.
+### Helle und dunkle Darstellung
+
+Oben rechts neben dem angemeldeten Benutzer befindet sich der Umschalter `Hell` / `Dunkel`.
+
+Die Auswahl wird direkt im jeweiligen Benutzerkonto als `themePreference` gespeichert und über die gemeinsame Datenbank synchronisiert. Jeder Benutzer behält deshalb seine eigene Darstellung – auch nach dem Abmelden oder auf einem anderen Rechner.
 
 ## GitHub aktualisieren
 
-Die wichtigsten geänderten Dateien sind:
+Am sichersten ist es, den vollständigen Inhalt des entpackten Ordners in das bestehende Repository zu übernehmen.
+
+Mindestens geändert wurden:
 
 ```text
 components/PortalApp.jsx
-app/api/state/route.js
-app/api/health/route.js
+components/Icon.jsx
+app/globals.css
 package.json
 VERSION.txt
 README.md
-CHANGELOG-v2.11.md
+CHANGELOG-v2.12.md
 ```
 
-Am sichersten ist es, den vollständigen Inhalt des entpackten Ordners in das bestehende Repository zu übernehmen.
+Nach dem Webflow-Deployment muss unten links stehen:
 
-## Test
+```text
+Version 2.12
+```
 
-1. Auf beiden Rechnern ausschließlich `https://www.druckkultur.de/app` öffnen.
-2. Mit `Strg + F5` neu laden.
-3. Unten links Version, Datenbank und API vergleichen.
-4. Auf Rechner A eine Nachricht senden.
-5. Auf Rechner B muss sich der Datenstand innerhalb weniger Sekunden erhöhen.
+## Prüfung
 
-## Getrennte alte Datenstände
+1. Auf zwei Rechnern `https://www.druckkultur.de/app` öffnen.
+2. Prüfen, dass beide dieselbe DB-Kennung anzeigen.
+3. Mehrere Nachrichten in unterschiedlicher Reihenfolge senden und die chronologische Darstellung kontrollieren.
+4. Zwischen Hell und Dunkel wechseln, abmelden und erneut mit demselben Benutzer anmelden.
+5. Die Projektseite öffnen und Filter sowie Suche testen.
 
-Die Datenstände der zuvor verwendeten Datenbanken werden nicht automatisch zusammengeführt. Nach Version 2.11 verwenden alle Browser den Datenstand der Datenbank, die tatsächlich an `/app/api/...` gebunden ist.
+## Technischer Hinweis
+
+Die Darstellung wird nicht nur lokal im Browser gespeichert. Sie ist Bestandteil des zentral gespeicherten Benutzerprofils. Änderungen an der Darstellung erhöhen deshalb wie andere Benutzereinstellungen den gemeinsamen Datenstand.

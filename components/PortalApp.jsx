@@ -11,8 +11,8 @@ import {
   initialUsers
 } from "@/data/mock-data";
 
-const APP_VERSION = "2.11";
-const SESSION_KEY = "druckkultur-desk-session-v2.11";
+const APP_VERSION = "2.12";
+const SESSION_KEY = "druckkultur-desk-session-v2.12";
 
 let resolvedApiBase = null;
 let lastApiAttempts = [];
@@ -113,6 +113,46 @@ function getCompany(companies, id) { return companies.find((company) => company.
 function formatToday() { return new Intl.DateTimeFormat("de-DE", { weekday: "long", day: "2-digit", month: "long" }).format(new Date()); }
 function formatDateTime() { return new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date()); }
 function formatDate() { return new Intl.DateTimeFormat("de-DE").format(new Date()); }
+function messageTimestamp(message) {
+  const parsed = Date.parse(message?.createdAt || "");
+  if (Number.isFinite(parsed)) return parsed;
+  const idMatch = String(message?.id || "").match(/(\d{12,})/);
+  return idMatch ? Number(idMatch[1]) : 0;
+}
+function messageDate(message) {
+  const timestamp = messageTimestamp(message);
+  return timestamp ? new Date(timestamp) : null;
+}
+function formatMessageClock(message) {
+  const date = messageDate(message);
+  return date ? new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit" }).format(date) : (message?.time || "");
+}
+function formatMessageDateTime(message) {
+  const date = messageDate(message);
+  return date ? `${new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }).format(date)}, ${formatMessageClock(message)} Uhr` : (message?.time || "");
+}
+function messageDayKey(message) {
+  const date = messageDate(message);
+  return date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}` : "ohne-datum";
+}
+function formatMessageDay(message) {
+  const date = messageDate(message);
+  if (!date) return "Ohne Datum";
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  const sameDay = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  if (sameDay(date, today)) return "Heute";
+  if (sameDay(date, yesterday)) return "Gestern";
+  return new Intl.DateTimeFormat("de-DE", { weekday: "short", day: "2-digit", month: "2-digit", year: "numeric" }).format(date);
+}
+function formatThreadTimestamp(message) {
+  const date = messageDate(message);
+  if (!date) return "";
+  const today = new Date();
+  if (date.toDateString() === today.toDateString()) return formatMessageClock(message);
+  return new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit" }).format(date);
+}
 function formatBytes(bytes) { if (!bytes) return "0 KB"; const units = ["B", "KB", "MB", "GB"]; const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1); return `${(bytes / 1024 ** i).toFixed(i > 1 ? 1 : 0)} ${units[i]}`; }
 function deriveCompanyShortName(name = "") {
   const trimmed = name.trim();
@@ -254,6 +294,7 @@ function normalizeUserForVersion(user) {
   const defaultEdit = user.type === "internal" || Boolean(user.rights?.manageCompany || user.rights?.manageUsers);
   return {
     ...user,
+    themePreference: user.themePreference === "light" ? "light" : "dark",
     availabilityStatus: user.type === "internal" ? (user.availabilityStatus || "available") : user.availabilityStatus,
     rights: { ...user.rights, editProjects: user.rights?.editProjects ?? defaultEdit }
   };
@@ -580,6 +621,17 @@ export default function PortalApp() {
   }, [notice]);
 
   const currentUser = getUser(users, currentUserId);
+  const currentTheme = currentUser?.themePreference === "light" ? "light" : "dark";
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = currentTheme;
+    document.documentElement.style.colorScheme = currentTheme;
+    return () => {
+      document.documentElement.dataset.theme = "dark";
+      document.documentElement.style.colorScheme = "dark";
+    };
+  }, [currentTheme]);
+
   useEffect(() => {
     if (!currentUser) return;
     if (currentUser.type === "customer") setSelectedCompanyId(currentUser.companyId);
@@ -1022,6 +1074,14 @@ export default function PortalApp() {
     setNotice(`Status auf „${availabilityOptions[status].label}“ gesetzt.`);
   }
 
+  function toggleTheme() {
+    if (!currentUser) return;
+    const nextTheme = currentTheme === "dark" ? "light" : "dark";
+    lastEventRef.current = `${currentUser.name} hat die persönliche Darstellung geändert`;
+    setUsers((current) => current.map((user) => user.id === currentUser.id ? { ...user, themePreference: nextTheme } : user));
+    setNotice(nextTheme === "light" ? "Helle Darstellung aktiviert." : "Dunkle Darstellung aktiviert.");
+  }
+
   function updateCompany(companyId, patch) {
     lastEventRef.current = `${currentUser?.name || "Ein Benutzer"} hat die Firmendarstellung geändert`;
     setCompanies((current) => current.map((company) => {
@@ -1114,11 +1174,11 @@ export default function PortalApp() {
   const companyStyle = { "--brand": currentCompany?.primaryColor || "#0b7772", "--brand-soft": currentCompany?.accentColor || "#9ed0c8" };
 
   return (
-    <div className="portal-root" style={companyStyle}>
+    <div className="portal-root" data-theme={currentTheme} style={companyStyle}>
       <a className="skip-link" href="#main-content">Zum Hauptinhalt</a>
       <Sidebar navItems={navItems} activeView={activeView} currentUser={currentUser} currentCompany={currentCompany} companies={accessibleCompanies} unreadByCompany={unreadByCompany} newProjectsByCompany={newProjectsByCompany} callbackByCompany={pendingCallbacksByCompany} mobileOpen={mobileMenuOpen} onNavigate={navigate} onSwitchCompany={switchCompany} onClose={() => setMobileMenuOpen(false)} onLogout={logout} onReset={resetDemo} onAvailabilityChange={updateAvailability} syncStatus={syncStatus} syncError={syncError} lastSyncedAt={lastSyncedAt} onRetrySync={retrySync} sharedRevision={sharedRevision} databaseInstanceId={databaseInstanceId} apiBasePath={apiBasePath} apiHost={apiHost} />
       <div className="app-column">
-        <Topbar currentUser={currentUser} currentCompany={currentCompany} searchTerm={searchTerm} unreadCount={unreadByCompany[currentCompany?.id] || 0} callbackCount={pendingCallbacksForUser.length} onSearch={setSearchTerm} onMenu={() => setMobileMenuOpen(true)} onMessages={() => navigate("messages")} onCallbacks={() => navigate("callbacks")} onLogout={logout} syncStatus={syncStatus} syncError={syncError} onRetrySync={retrySync} sharedRevision={sharedRevision} databaseInstanceId={databaseInstanceId} />
+        <Topbar currentUser={currentUser} currentCompany={currentCompany} searchTerm={searchTerm} unreadCount={unreadByCompany[currentCompany?.id] || 0} callbackCount={pendingCallbacksForUser.length} onSearch={setSearchTerm} onMenu={() => setMobileMenuOpen(true)} onMessages={() => navigate("messages")} onCallbacks={() => navigate("callbacks")} onLogout={logout} syncStatus={syncStatus} syncError={syncError} onRetrySync={retrySync} theme={currentTheme} onToggleTheme={toggleTheme} />
         <main id="main-content" tabIndex="-1" className="main-content">
           {syncStatus === "error" && <section className="connection-warning" role="alert"><Icon name="shield" size={22} /><div><strong>Keine Verbindung zur gemeinsamen Datenbank</strong><span>{syncError || "Änderungen können derzeit nicht zwischen mehreren Geräten synchronisiert werden."}</span></div><button type="button" onClick={retrySync}>Verbindung prüfen</button></section>}
           {activeView === "companies" && currentUser.type === "internal" && <CompaniesView companies={accessibleCompanies} projects={projects} unreadByCompany={unreadByCompany} newProjectsByCompany={newProjectsByCompany} callbackByCompany={pendingCallbacksByCompany} users={users} onOpen={switchCompany} />}
@@ -1192,12 +1252,16 @@ function Sidebar({ navItems, activeView, currentUser, currentCompany, companies,
   </>;
 }
 
-function Topbar({ currentUser, currentCompany, searchTerm, unreadCount, callbackCount, onSearch, onMenu, onMessages, onCallbacks, onLogout, syncStatus, syncError, onRetrySync }) {
+function Topbar({ currentUser, currentCompany, searchTerm, unreadCount, callbackCount, onSearch, onMenu, onMessages, onCallbacks, onLogout, syncStatus, syncError, onRetrySync, theme, onToggleTheme }) {
   return <header className="topbar">
     <button className="icon-button mobile-menu" onClick={onMenu}><Icon name="menu" /></button>
     <div className="topbar-context"><span>{currentCompany?.shortName || "Firmenübersicht"}</span><strong>{formatToday()}</strong></div>
     <label className={classNames("global-search", !currentCompany && "disabled")}><Icon name="search" size={21} /><input disabled={!currentCompany} value={searchTerm} onChange={(event) => onSearch(event.target.value)} placeholder={currentCompany ? "Projekt, Auftrag oder Status suchen …" : "Zuerst eine Firma auswählen"} /></label>
     <div className="topbar-actions">
+      <button type="button" className="theme-toggle" onClick={onToggleTheme} title={theme === "dark" ? "Helle Darstellung aktivieren" : "Dunkle Darstellung aktivieren"} aria-label={theme === "dark" ? "Helle Darstellung aktivieren" : "Dunkle Darstellung aktivieren"}>
+        <Icon name={theme === "dark" ? "sun" : "moon"} size={21} />
+        <span>{theme === "dark" ? "Hell" : "Dunkel"}</span>
+      </button>
       <button type="button" className={classNames("topbar-sync", syncStatus)} onClick={onRetrySync} title={syncError || "Live-Verbindung prüfen"}>{syncStatus === "saving" ? "Speichert …" : syncStatus === "error" ? "Verbindung prüfen" : "Live"}</button>
       {currentUser.type === "internal" && <button className="notification-button callback-topbar" onClick={onCallbacks} aria-label={`${callbackCount} offene Rückrufe`}><Icon name="phone" size={22} />{callbackCount > 0 && <b>{callbackCount}</b>}</button>}
       <button className="notification-button" disabled={!currentCompany} onClick={onMessages}><Icon name="bell" size={22} />{unreadCount > 0 && <b>{unreadCount}</b>}</button>
@@ -1227,74 +1291,104 @@ function DashboardView({ currentUser, company, projects, messages, callbacks, us
   const unread = messages.filter((message) => message.senderUserId !== currentUser.id && !(message.readBy || []).includes(currentUser.id));
   const open = projects.filter((project) => project.progress < 100);
   const ownCallbacks = callbacks.filter((entry) => entry.status === "pending" && (currentUser.type === "internal" ? entry.assignedUserId === currentUser.id : entry.requesterUserId === currentUser.id));
-  return <div className="page-stack"><section className="dashboard-hero"><div><p className="eyebrow">{currentUser.type === "internal" ? `Arbeitsraum · ${company.name}` : "Ihre externe Druckabteilung"}</p><h1>Guten Morgen, {currentUser.firstName}.</h1><p>{attention.length ? `${attention.length} Vorgänge benötigen Ihre Aufmerksamkeit.` : "Alle wichtigen Vorgänge sind aktuell geklärt."}</p></div><div className="hero-actions"><button className="primary-button" onClick={() => onNavigate("request")}><Icon name="plus" size={20} /> Neues Projekt</button><button className="secondary-button" onClick={() => onNavigate("messages")}><Icon name="message" size={20} /> Nachricht senden</button></div></section>{currentUser.type === "internal" && <section className="cross-company-strip"><div><span className="eyebrow">Firmenübergreifend</span><strong>Was außerhalb von {company.shortName} neu ist</strong></div><div className="cross-company-items">{companies.filter((item) => item.id !== company.id).map((item) => <button key={item.id} onClick={() => onSwitchCompany(item.id)}><CompanyLogo company={item} compact /><span><strong>{item.shortName}</strong><small>{newProjectsByCompany[item.id] || 0} Projekte · {unreadByCompany[item.id] || 0} Nachrichten · {callbackByCompany[item.id] || 0} Rückrufe</small></span>{((newProjectsByCompany[item.id] || 0) + (unreadByCompany[item.id] || 0) + (callbackByCompany[item.id] || 0)) > 0 && <b>{(newProjectsByCompany[item.id] || 0) + (unreadByCompany[item.id] || 0) + (callbackByCompany[item.id] || 0)}</b>}</button>)}</div></section>}<section className="summary-row"><button onClick={() => onNavigate("projects")}><span className="metric-icon warning"><Icon name="clock" /></span><span><strong>{attention.length}</strong><small>offene Entscheidungen</small></span></button><button onClick={() => onNavigate("messages")}><span className="metric-icon info"><Icon name="message" /></span><span><strong>{unread.length}</strong><small>ungelesene Nachrichten</small></span></button><button onClick={() => currentUser.type === "internal" ? onNavigate("callbacks") : onNavigate("team")}><span className="metric-icon"><Icon name="phone" /></span><span><strong>{ownCallbacks.length}</strong><small>{currentUser.type === "internal" ? "offene Rückrufe" : "angeforderte Rückrufe"}</small></span></button><button onClick={() => onNavigate("projects")}><span className="metric-icon success"><Icon name="projects" /></span><span><strong>{newProjectsByCompany[company.id] || 0}</strong><small>neue Projekte</small></span></button></section><section className="dashboard-focus-grid"><div className="panel focus-panel"><PanelHeader title="Jetzt wichtig" subtitle="Nur Vorgänge, bei denen eine Entscheidung oder Reaktion nötig ist" action="Alle Projekte" onAction={() => onNavigate("projects")} /><div className="focus-list">{attention.length ? attention.slice(0, 5).map((project) => <article key={project.id}><button onClick={() => onOpenProject(project.id)}><span className={classNames("status-dot", project.statusTone)} /><span><small>{project.id} · {project.category}</small><strong>{project.nextAction}</strong><p>{project.title}</p></span><time>{project.due}</time></button>{project.status === "Freigabe erforderlich" && currentUser.rights.approve && <button className="small-action" onClick={() => onApprove(project.id)}>Freigeben</button>}</article>) : <EmptyState title="Nichts offen" text="Derzeit ist keine Entscheidung erforderlich." />}</div></div><div className="panel"><PanelHeader title="Neu eingegangen" subtitle="Nachrichten aus den Projekten" action="Postfach" onAction={() => onNavigate("messages")} /><div className="message-preview-list">{unread.length ? unread.slice(-4).reverse().map((message) => { const sender = getUser(users, message.senderUserId); const project = projects.find((item) => item.id === message.projectId); return <button key={message.id} onClick={() => message.projectId ? onOpenProject(message.projectId) : onNavigate("messages")}><span className="avatar">{sender?.initials || "DK"}</span><span><strong>{sender?.name || "Projektteam"}</strong><small>{project?.title || "Direkte Nachricht"}</small><p>{message.text}</p></span><i /></button>; }) : <EmptyState title="Alles gelesen" text="Keine neue Nachricht wartet auf Sie." />}</div></div></section><section className="panel"><PanelHeader title="Laufende Projekte" subtitle={`${projects.length} sichtbare Projekte bei ${company.shortName}`} action="Alle öffnen" onAction={() => onNavigate("projects")} /><ProjectTable projects={projects.slice(0, 7)} onOpen={onOpenProject} /></section></div>;
+  return <div className="page-stack"><section className="dashboard-hero"><div><p className="eyebrow">{currentUser.type === "internal" ? `Arbeitsraum · ${company.name}` : "Ihre externe Druckabteilung"}</p><h1>Guten Morgen, {currentUser.firstName}.</h1><p>{attention.length ? `${attention.length} Vorgänge benötigen Ihre Aufmerksamkeit.` : "Alle wichtigen Vorgänge sind aktuell geklärt."}</p></div><div className="hero-actions"><button className="primary-button" onClick={() => onNavigate("request")}><Icon name="plus" size={20} /> Neues Projekt</button><button className="secondary-button" onClick={() => onNavigate("messages")}><Icon name="message" size={20} /> Nachricht senden</button></div></section>{currentUser.type === "internal" && <section className="cross-company-strip"><div><span className="eyebrow">Firmenübergreifend</span><strong>Was außerhalb von {company.shortName} neu ist</strong></div><div className="cross-company-items">{companies.filter((item) => item.id !== company.id).map((item) => <button key={item.id} onClick={() => onSwitchCompany(item.id)}><CompanyLogo company={item} compact /><span><strong>{item.shortName}</strong><small>{newProjectsByCompany[item.id] || 0} Projekte · {unreadByCompany[item.id] || 0} Nachrichten · {callbackByCompany[item.id] || 0} Rückrufe</small></span>{((newProjectsByCompany[item.id] || 0) + (unreadByCompany[item.id] || 0) + (callbackByCompany[item.id] || 0)) > 0 && <b>{(newProjectsByCompany[item.id] || 0) + (unreadByCompany[item.id] || 0) + (callbackByCompany[item.id] || 0)}</b>}</button>)}</div></section>}<section className="summary-row"><button onClick={() => onNavigate("projects")}><span className="metric-icon warning"><Icon name="clock" /></span><span><strong>{attention.length}</strong><small>offene Entscheidungen</small></span></button><button onClick={() => onNavigate("messages")}><span className="metric-icon info"><Icon name="message" /></span><span><strong>{unread.length}</strong><small>ungelesene Nachrichten</small></span></button><button onClick={() => currentUser.type === "internal" ? onNavigate("callbacks") : onNavigate("team")}><span className="metric-icon"><Icon name="phone" /></span><span><strong>{ownCallbacks.length}</strong><small>{currentUser.type === "internal" ? "offene Rückrufe" : "angeforderte Rückrufe"}</small></span></button><button onClick={() => onNavigate("projects")}><span className="metric-icon success"><Icon name="projects" /></span><span><strong>{newProjectsByCompany[company.id] || 0}</strong><small>neue Projekte</small></span></button></section><section className="dashboard-focus-grid"><div className="panel focus-panel"><PanelHeader title="Jetzt wichtig" subtitle="Nur Vorgänge, bei denen eine Entscheidung oder Reaktion nötig ist" action="Alle Projekte" onAction={() => onNavigate("projects")} /><div className="focus-list">{attention.length ? attention.slice(0, 5).map((project) => <article key={project.id}><button onClick={() => onOpenProject(project.id)}><span className={classNames("status-dot", project.statusTone)} /><span><small>{project.id} · {project.category}</small><strong>{project.nextAction}</strong><p>{project.title}</p></span><time>{project.due}</time></button>{project.status === "Freigabe erforderlich" && currentUser.rights.approve && <button className="small-action" onClick={() => onApprove(project.id)}>Freigeben</button>}</article>) : <EmptyState title="Nichts offen" text="Derzeit ist keine Entscheidung erforderlich." />}</div></div><div className="panel"><PanelHeader title="Neu eingegangen" subtitle="Nachrichten aus den Projekten" action="Postfach" onAction={() => onNavigate("messages")} /><div className="message-preview-list">{unread.length ? [...unread].sort((a, b) => messageTimestamp(b) - messageTimestamp(a)).slice(0, 4).map((message) => { const sender = getUser(users, message.senderUserId); const project = projects.find((item) => item.id === message.projectId); return <button key={message.id} onClick={() => message.projectId ? onOpenProject(message.projectId) : onNavigate("messages")}><span className="avatar">{sender?.initials || "DK"}</span><span><strong>{sender?.name || "Projektteam"}</strong><small>{project?.title || "Direkte Nachricht"}</small><p>{message.text}</p></span><i /></button>; }) : <EmptyState title="Alles gelesen" text="Keine neue Nachricht wartet auf Sie." />}</div></div></section><section className="panel"><PanelHeader title="Laufende Projekte" subtitle={`${projects.length} sichtbare Projekte bei ${company.shortName}`} action="Alle öffnen" onAction={() => onNavigate("projects")} /><ProjectTable projects={projects.slice(0, 7)} onOpen={onOpenProject} /></section></div>;
 }
 
 
 function ProjectsView({ projects, users, currentUser, searchTerm, onSearch, onOpenProject, onCreateProject }) {
   const [filter, setFilter] = useState("Alle");
   const filters = ["Alle", "Offen", "Freigabe", "Produktion", "Abgeschlossen"];
-  const filtered = projects.filter((project) =>
-    filter === "Alle" ||
-    (filter === "Offen" && project.progress < 100) ||
-    (filter === "Freigabe" && (project.status.includes("Freigabe") || project.status.includes("Angebot"))) ||
-    (filter === "Produktion" && (project.status === "In Produktion" || project.status === "Versandbereit")) ||
-    (filter === "Abgeschlossen" && project.progress === 100)
-  );
+  const filtered = projects
+    .filter((project) =>
+      filter === "Alle" ||
+      (filter === "Offen" && project.progress < 100) ||
+      (filter === "Freigabe" && (project.status.includes("Freigabe") || project.status.includes("Angebot"))) ||
+      (filter === "Produktion" && (project.status === "In Produktion" || project.status === "Versandbereit")) ||
+      (filter === "Abgeschlossen" && project.progress === 100)
+    )
+    .sort((a, b) => {
+      const newDifference = Number(isProjectNewFor(b, currentUser)) - Number(isProjectNewFor(a, currentUser));
+      if (newDifference) return newDifference;
+      return String(b.id).localeCompare(String(a.id), "de", { numeric: true });
+    });
+
   return (
     <div className="page-stack">
       <div className="page-heading-with-action">
         <PageHeader
           eyebrow="Auftragsübersicht"
           title="Projekte"
-          lead="Jedes Projekt besitzt eine vollständige Arbeitsseite mit Statussteuerung, Nachrichten, Dateien, Freigaben und Zuständigkeiten."
+          lead="Die kompakte Listenansicht bleibt auch bei vielen Projekten übersichtlich. Status, nächster Schritt, Zuständigkeiten und Liefertermin sind direkt vergleichbar."
         />
         <button className="primary-button create-project-button" onClick={onCreateProject}>
           <Icon name="plus" size={20} /> Projekt erstellen
         </button>
       </div>
-      <section className="toolbar">
+      <section className="toolbar project-toolbar">
         <div className="filter-tabs">
           {filters.map((item) => (
             <button key={item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>{item}</button>
           ))}
         </div>
-        <label className="inline-search">
-          <Icon name="search" size={20} />
-          <input value={searchTerm} onChange={(event) => onSearch(event.target.value)} placeholder="Projekte filtern …" />
-        </label>
+        <div className="project-toolbar-right">
+          <span className="project-result-count">{filtered.length} {filtered.length === 1 ? "Projekt" : "Projekte"}</span>
+          <label className="inline-search">
+            <Icon name="search" size={20} />
+            <input value={searchTerm} onChange={(event) => onSearch(event.target.value)} placeholder="Projekt, Nummer oder Status …" />
+          </label>
+        </div>
       </section>
-      <section className="project-card-grid">
-        {filtered.map((project) => {
-          const owners = project.ownerUserIds.map((id) => getUser(users, id)).filter(Boolean);
-          const contact = getUser(users, project.contactUserId);
-          return (
-            <article className="project-card" key={project.id}>
-              <div className="project-card-top">
-                <span className="project-symbol"><Icon name={project.category.includes("Faltschachtel") || project.category.includes("Verpackung") ? "layers" : "print"} size={32} /></span>
-                <span className="project-card-statuses">{isProjectNewFor(project, currentUser) && <b className="project-new-label">Neu eingegangen</b>}<span className={classNames("status-badge", project.statusTone)}>{project.status}</span></span>
-              </div>
-              <span className="project-meta">{project.id} · {project.category}</span>
-              <h2>{project.title}</h2>
-              <p>{project.specification}</p>
-              <div className="project-progress">
-                <div><span>Fortschritt</span><strong>{project.progress}%</strong></div>
-                <i><b style={{ width: `${project.progress}%` }} /></i>
-              </div>
-              <dl className="card-details">
-                <div><dt>Nächster Schritt</dt><dd>{project.nextAction}</dd></div>
-                <div><dt>Liefertermin</dt><dd>{project.delivery}</dd></div>
-                <div><dt>Kundenseite</dt><dd>{owners.map((owner) => owner.name).join(", ") || "Teamleitung"}</dd></div>
-                <div><dt>druckkultur</dt><dd>{contact?.name || "Projektteam"}</dd></div>
-              </dl>
-              <button className="card-link" onClick={() => onOpenProject(project.id)}>
-                Projekt vollständig öffnen <Icon name="arrow" size={19} />
-              </button>
-            </article>
-          );
-        })}
+
+      <section className="panel project-list-panel">
+        <div className="project-list-scroll">
+          <table className="project-list-table">
+            <thead>
+              <tr>
+                <th>Projekt</th>
+                <th>Status</th>
+                <th>Nächster Schritt</th>
+                <th>Kundenseite</th>
+                <th>druckkultur</th>
+                <th>Liefertermin</th>
+                <th>Fortschritt</th>
+                <th><span className="sr-only">Öffnen</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((project) => {
+                const owners = project.ownerUserIds.map((id) => getUser(users, id)).filter(Boolean);
+                const contact = getUser(users, project.contactUserId);
+                return (
+                  <tr key={project.id} className={isProjectNewFor(project, currentUser) ? "new-project-row" : ""}>
+                    <td>
+                      <button className="project-list-title" onClick={() => onOpenProject(project.id)}>
+                        <span className="project-list-title-line">
+                          <strong>{project.title}</strong>
+                          {isProjectNewFor(project, currentUser) && <b className="project-new-label">Neu</b>}
+                        </span>
+                        <small>{project.id} · {project.category}</small>
+                      </button>
+                    </td>
+                    <td><span className={classNames("status-badge", project.statusTone)}>{project.status}</span></td>
+                    <td><div className="project-next-cell"><strong>{project.nextAction}</strong><small>{project.due}</small></div></td>
+                    <td>{owners.map((owner) => owner.name).join(", ") || "Teamleitung"}</td>
+                    <td>{contact?.name || "Projektteam"}</td>
+                    <td><span className="project-delivery-cell">{project.delivery}</span></td>
+                    <td>
+                      <div className="table-progress">
+                        <i><b style={{ width: `${project.progress}%` }} /></i>
+                        <span>{project.progress}%</span>
+                      </div>
+                    </td>
+                    <td><button className="table-open icon-only" onClick={() => onOpenProject(project.id)} aria-label={`${project.title} öffnen`}><Icon name="arrow" size={18} /></button></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        {!filtered.length && <EmptyState title="Keine Projekte gefunden" text="Für diese Auswahl gibt es keine sichtbaren Projekte." />}
       </section>
-      {!filtered.length && <EmptyState title="Keine Projekte gefunden" text="Für diese Auswahl gibt es keine sichtbaren Projekte." />}
     </div>
   );
 }
@@ -1423,14 +1517,14 @@ function ProjectDetailView({ project, users, currentUser, messages, documents, o
       {tab === "messages" && (
         <section className="panel project-communication">
           <div className="project-message-stream">
-            {[...messages].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()).map((message) => {
+            {[...messages].sort((a, b) => messageTimestamp(a) - messageTimestamp(b)).map((message) => {
               const sender = getUser(users, message.senderUserId);
               const own = message.senderUserId === currentUser.id;
               return (
                 <article key={message.id} className={classNames("message-row", own && "own")}>
                   {!own && <span className="avatar">{sender?.initials || "DK"}</span>}
                   <div className="message-bubble">
-                    <div className="message-author"><strong>{own ? "Sie" : sender?.name || "Projektteam"}</strong><time>{message.time}</time></div>
+                    <div className="message-author"><strong>{own ? "Sie" : sender?.name || "Projektteam"}</strong><time dateTime={message.createdAt || ""} title={formatMessageDateTime(message)}>{formatMessageDateTime(message)}</time></div>
                     <p>{message.text}</p>
                     {own && <small className="read-receipt"><Icon name={(message.readBy || []).length > 1 ? "check" : "send"} size={15} />{receiptText(message, users, currentUser)}</small>}
                   </div>
@@ -1649,14 +1743,37 @@ function MessagesView({ messages, projects, users, company, currentUser, initial
     subtitle: user.deleted ? "Gelöschter Benutzer · Verlauf nur lesbar" : `Direkter Kontakt · ${user.roleLabel}`,
     disabled: Boolean(user.deleted)
   }));
-  const threads = [...directThreads, ...projectThreads];
-  const preferred = initialTargetUserId ? directThreadId(company.id, currentUser.id, initialTargetUserId) : null;
 
+  const messagesByThread = new Map();
+  messages.forEach((message) => {
+    const threadId = threadIdForMessage(message);
+    const list = messagesByThread.get(threadId) || [];
+    list.push(message);
+    messagesByThread.set(threadId, list);
+  });
+  messagesByThread.forEach((list) => list.sort((a, b) => messageTimestamp(a) - messageTimestamp(b)));
+
+  const threads = [...directThreads, ...projectThreads]
+    .map((thread) => {
+      const list = messagesByThread.get(thread.id) || [];
+      const lastMessage = list.at(-1) || null;
+      return {
+        ...thread,
+        messages: list,
+        lastMessage,
+        lastTimestamp: lastMessage ? messageTimestamp(lastMessage) : 0,
+        unread: list.filter((message) => message.senderUserId !== currentUser.id && !(message.readBy || []).includes(currentUser.id)).length
+      };
+    })
+    .sort((a, b) => b.lastTimestamp - a.lastTimestamp || a.title.localeCompare(b.title, "de"));
+
+  const preferred = initialTargetUserId ? directThreadId(company.id, currentUser.id, initialTargetUserId) : null;
   const [activeThreadId, setActiveThreadId] = useState(null);
   const [draft, setDraft] = useState("");
   const [newMessageOpen, setNewMessageOpen] = useState(false);
   const [newType, setNewType] = useState("direct");
   const [newTargetId, setNewTargetId] = useState("");
+  const messageStreamRef = useRef(null);
 
   useEffect(() => {
     setActiveThreadId(null);
@@ -1676,9 +1793,22 @@ function MessagesView({ messages, projects, users, company, currentUser, initial
   }, [activeThreadId]);
 
   const active = threads.find((thread) => thread.id === activeThreadId) || null;
-  const threadMessages = active
-    ? messages.filter((message) => threadIdForMessage(message) === active.id).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
-    : [];
+  const threadMessages = active?.messages || [];
+
+  useEffect(() => {
+    if (!activeThreadId) return;
+    window.requestAnimationFrame(() => {
+      if (messageStreamRef.current) messageStreamRef.current.scrollTop = messageStreamRef.current.scrollHeight;
+    });
+  }, [activeThreadId, threadMessages.length]);
+
+  const messageGroups = [];
+  threadMessages.forEach((message) => {
+    const key = messageDayKey(message);
+    const latestGroup = messageGroups.at(-1);
+    if (!latestGroup || latestGroup.key !== key) messageGroups.push({ key, label: formatMessageDay(message), messages: [message] });
+    else latestGroup.messages.push(message);
+  });
 
   function beginNewMessage() {
     setNewMessageOpen(true);
@@ -1711,7 +1841,7 @@ function MessagesView({ messages, projects, users, company, currentUser, initial
         <PageHeader
           eyebrow="Direkter Draht"
           title="Nachrichten"
-          lead="Keine Unterhaltung wird automatisch geöffnet. Wählen Sie bewusst ein Projekt oder starten Sie eine neue persönliche Nachricht."
+          lead="Unterhaltungen sind nach der jeweils neuesten Nachricht sortiert. Innerhalb eines Gesprächs stehen alle Nachrichten chronologisch nach Datum und Uhrzeit."
         />
         <button className="primary-button create-project-button" onClick={beginNewMessage}>
           <Icon name="plus" size={20} /> Neue Nachricht
@@ -1755,22 +1885,20 @@ function MessagesView({ messages, projects, users, company, currentUser, initial
       <section className="messages-layout">
         <aside className="thread-list">
           <header><strong>Unterhaltungen</strong><span>{threads.length}</span></header>
-          {threads.map((thread) => {
-            const list = messages.filter((message) => threadIdForMessage(message) === thread.id);
-            const last = list[list.length - 1];
-            const unread = list.filter((message) => message.senderUserId !== currentUser.id && !(message.readBy || []).includes(currentUser.id)).length;
-            return (
-              <button key={thread.id} className={active?.id === thread.id ? "active" : ""} onClick={() => setActiveThreadId(thread.id)}>
-                <span className="thread-icon"><Icon name={thread.type === "direct" ? "users" : "projects"} size={21} /></span>
-                <span>
-                  <strong>{thread.title}</strong>
-                  <small>{thread.subtitle}</small>
-                  <p>{last?.text || "Noch keine Nachricht"}</p>
-                </span>
-                {unread > 0 && <b className="count-badge">{unread}</b>}
-              </button>
-            );
-          })}
+          {threads.map((thread) => (
+            <button key={thread.id} className={classNames(active?.id === thread.id && "active", thread.unread > 0 && "unread")} onClick={() => setActiveThreadId(thread.id)}>
+              <span className="thread-icon"><Icon name={thread.type === "direct" ? "users" : "projects"} size={21} /></span>
+              <span>
+                <strong>{thread.title}</strong>
+                <small>{thread.subtitle}</small>
+                <p>{thread.lastMessage?.text || "Noch keine Nachricht"}</p>
+              </span>
+              <span className="thread-list-meta">
+                {thread.lastMessage && <time dateTime={thread.lastMessage.createdAt || ""} title={formatMessageDateTime(thread.lastMessage)}>{formatThreadTimestamp(thread.lastMessage)}</time>}
+                {thread.unread > 0 && <b className="count-badge">{thread.unread}</b>}
+              </span>
+            </button>
+          ))}
         </aside>
 
         <div className="conversation-panel">
@@ -1780,21 +1908,29 @@ function MessagesView({ messages, projects, users, company, currentUser, initial
                 <div><span>{active.subtitle}</span><h2>{active.title}</h2></div>
                 {active.type === "direct" && <span className="status-badge success">Persönlicher Kontakt</span>}
               </header>
-              <div className="message-stream">
-                {threadMessages.map((message) => {
-                  const sender = getUser(users, message.senderUserId);
-                  const own = message.senderUserId === currentUser.id;
-                  return (
-                    <article key={message.id} className={classNames("message-row", own && "own")}>
-                      {!own && <span className="avatar">{sender?.initials || "DK"}</span>}
-                      <div className="message-bubble">
-                        <div className="message-author"><strong>{own ? "Sie" : sender?.name || "Projektteam"}</strong><time>{message.time}</time></div>
-                        <p>{message.text}</p>
-                        {own && <small className="read-receipt"><Icon name={(message.readBy || []).length > 1 ? "check" : "send"} size={15} />{receiptText(message, users, currentUser)}</small>}
-                      </div>
-                    </article>
-                  );
-                })}
+              <div className="message-stream" ref={messageStreamRef}>
+                {messageGroups.map((group) => (
+                  <section className="message-day-group" key={group.key}>
+                    <div className="message-date-separator"><span>{group.label}</span></div>
+                    {group.messages.map((message) => {
+                      const sender = getUser(users, message.senderUserId);
+                      const own = message.senderUserId === currentUser.id;
+                      return (
+                        <article key={message.id} className={classNames("message-row", own && "own")}>
+                          {!own && <span className="avatar">{sender?.initials || "DK"}</span>}
+                          <div className="message-bubble">
+                            <div className="message-author">
+                              <strong>{own ? "Sie" : sender?.name || "Projektteam"}</strong>
+                              <time dateTime={message.createdAt || ""} title={formatMessageDateTime(message)}>{formatMessageClock(message)} Uhr</time>
+                            </div>
+                            <p>{message.text}</p>
+                            {own && <small className="read-receipt"><Icon name={(message.readBy || []).length > 1 ? "check" : "send"} size={15} />{receiptText(message, users, currentUser)}</small>}
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </section>
+                ))}
                 {!threadMessages.length && <EmptyState title="Neue Unterhaltung" text="Schreiben Sie die erste Nachricht. Sie wird dem gewählten Kontakt oder Projekt zugeordnet." />}
               </div>
               <form className="message-composer" onSubmit={send}>
