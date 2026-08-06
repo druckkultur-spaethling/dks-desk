@@ -1,65 +1,64 @@
-# druckkultur desk – Version 2.6
+# druckkultur desk – Version 2.7
 
-Version 2.6 behebt den Rückweg aus einem Firmenarbeitsraum und verbessert die gemeinsame Live-Synchronisierung zwischen mehreren Geräten.
+Version 2.7 behebt den HTTP-404-Fehler der Portal-API bei unterschiedlichen Webflow-Mount-Pfaden.
 
-## Neu in Version 2.6
+## Ursache des Fehlers
 
-- neuer Eintrag **Alle Firmen – Zur Gesamtübersicht** oben im Firmenwechsler
-- der Menüpunkt **Firmenübersicht** hebt die aktive Firma ebenfalls auf
-- API-Pfade verwenden bevorzugt die von Webflow bereitgestellte `BASE_URL`
-- `wrangler.jsonc` wurde in das von Webflow dokumentierte `wrangler.json` umbenannt
-- zentrale Daten werden alle zwei Sekunden auf neue Revisionen geprüft
-- jeder Lesezugriff erhält eine eindeutige URL, damit kein veralteter API-Stand aus einem Cache verwendet wird
-- sofortiger Synchronisationsversuch beim Zurückkehren in den Browser und nach Wiederherstellung der Internetverbindung
-- neuer Diagnose-Endpunkt `/api/health`
-- konkrete Fehlermeldung bei fehlender `DB`-Bindung statt nur „Offline“
-- sichtbare Warnleiste, solange keine gemeinsame Datenbankverbindung besteht
-- Nachrichten werden bei unterbrochener Datenbankverbindung nicht mehr fälschlich als gesendet dargestellt
-- Versionsanzeige: `Version 2.6`
+Webflow stellt `BASE_URL` erst zur Laufzeit bereit. In Version 2.6 wurde der Wert zusätzlich in der Next.js-Buildkonfiguration verwendet. Je nach Environment konnte dadurch die Oberfläche unter einem anderen Pfad laufen als die API-Aufrufe.
 
-## Warum stand „Verbindung unterbrochen“ oder „Offline“?
+Version 2.7 ermittelt den API-Pfad direkt aus der im Browser geöffneten Adresse. Läuft die App unter `/portal`, werden zuerst `/portal/api/...`-Routen verwendet. Läuft sie am Root-Pfad, werden `/api/...`-Routen verwendet. Antwortet ein Pfad mit 404, prüft die App automatisch die Alternative.
 
-Die Anzeige bezieht sich auf die Verbindung zwischen der Webapp und der zentralen Webflow-Cloud-SQLite-Datenbank. Sie sagt nicht zwingend, dass der PC keine Internetverbindung besitzt.
+## GitHub aktualisieren
 
-Wenn `/api/state` die Bindung `DB` nicht erreicht, lädt die Oberfläche nur die lokalen Ausgangsdaten. Änderungen können dann nicht auf einem zweiten Rechner erscheinen.
+1. `druckkultur-portal-v2.7.zip` entpacken.
+2. Im Repository die bisherigen Ordner `app`, `components`, `data`, `public` und `migrations` löschen.
+3. Die Dateien `next.config.mjs`, `package.json`, `wrangler.json`, `webflow.json` und `VERSION.txt` ebenfalls durch die neuen Dateien ersetzen.
+4. Den Inhalt des entpackten Ordners hochladen. `package.json` muss direkt im Hauptverzeichnis liegen.
+5. Direkt in `main` committen und das Webflow-Deployment abwarten.
 
-## Speicher in Webflow kontrollieren
+## Webflow-Einstellungen
 
-Nach dem Deployment öffnest du:
+Root directory:
 
 ```text
-Webflow Dashboard
-→ App öffnen
-→ Environment öffnen
-→ Storage
+./
 ```
 
-Dort müssen erscheinen:
+Der Mount-Pfad wird ausschließlich in der Webflow-Environment eingestellt, beispielsweise:
 
 ```text
-DB              SQLite
-CLOUD_FILES     Object Storage
+/portal
 ```
 
-Fehlt `DB`, kann die App keine Firmen, Projekte oder Nachrichten gemeinsam speichern.
+Die selbst angelegte Environment-Variable
 
-Bei einer bereits vorhandenen App:
+```text
+WEBFLOW_CLOUD_MOUNT_PATH
+```
 
-1. Bei der App auf `…` klicken.
-2. `Edit` auswählen.
-3. Ohne weitere Änderung `Save Changes` anklicken.
-4. Anschließend Version 2.6 erneut deployen.
-5. Danach den Bereich `Storage` erneut kontrollieren.
+wird von Version 2.7 nicht mehr benötigt und kann gelöscht werden. Webflow stellt den tatsächlichen Pfad automatisch bereit.
 
-## Verbindung direkt testen
+## Verbindung prüfen
 
-Bei einem Mount-Pfad `/portal` öffnest du im Browser:
+Nach dem Deployment muss unten links stehen:
+
+```text
+Version 2.7
+```
+
+Öffne danach direkt:
 
 ```text
 https://DEINE-DOMAIN/portal/api/health
 ```
 
-Bei erfolgreicher Verbindung erscheint ungefähr:
+oder bei einer Root-Environment:
+
+```text
+https://DEINE-DOMAIN/api/health
+```
+
+Erwartete Antwort:
 
 ```json
 {
@@ -69,75 +68,21 @@ Bei erfolgreicher Verbindung erscheint ungefähr:
 }
 ```
 
-Fehlt die Datenbankbindung, zeigt die Antwort eine konkrete Meldung mit `DB_BINDING_MISSING`.
+Falls die Route erreichbar ist, aber `DB_BINDING_MISSING` meldet, liegt der Pfadfehler nicht mehr vor. Dann fehlen noch die Storage-Bindings `DB` und gegebenenfalls `CLOUD_FILES` in der Webflow-Environment.
 
-## Firmenauswahl zurücksetzen
+## Mehrgeräte-Test
 
-Als Mitarbeiter gibt es jetzt zwei Wege zurück:
+1. Auf beiden Rechnern prüfen, dass oben rechts `Live` steht.
+2. Rechner A: als Kunde eine Nachricht senden.
+3. Rechner B: als Mitarbeiter angemeldet bleiben.
+4. Die Nachricht wird normalerweise innerhalb von zwei Sekunden geladen.
 
-- links unter **Firmen wechseln** auf **Alle Firmen** klicken
-- im Hauptmenü **Firmenübersicht** öffnen
+## Zentrale Speicherung
 
-Danach ist keine Firma mehr aktiv und die Gesamtübersicht wird angezeigt.
-
-## Nachrichten zwischen mehreren Rechnern testen
-
-1. Auf Rechner A als Kunde anmelden.
-2. Prüfen, dass oben rechts `Live` steht.
-3. Nachricht an einen Mitarbeiter senden.
-4. Auf Rechner B als Mitarbeiter anmelden.
-5. Auch dort muss `Live` stehen.
-6. Die neue Nachricht erscheint normalerweise innerhalb von zwei Sekunden beim passenden Firmenzähler und im Nachrichtenbereich.
-
-Steht auf einem der Rechner `Verbindung prüfen`, ist dieser Rechner nicht mit dem gemeinsamen Datenstand verbunden. Ein Klick auf die Anzeige startet einen neuen Verbindungsversuch und zeigt den konkreten Fehler.
-
-## GitHub-Aktualisierung im Browser
-
-1. `druckkultur-portal-v2.6.zip` herunterladen und entpacken.
-2. Im GitHub-Repository die alten Ordner `app`, `components`, `data`, `public` und `migrations` löschen.
-3. Die alte Datei `wrangler.jsonc` löschen, falls sie noch vorhanden ist.
-4. `Add file → Upload files` öffnen.
-5. Den Inhalt des entpackten Ordners hochladen.
-6. Darauf achten, dass diese Dateien direkt im Hauptverzeichnis liegen:
-
-```text
-package.json
-wrangler.json
-webflow.json
-VERSION.txt
-```
-
-7. Direkt in den Branch `main` committen.
-8. Webflow-Deployment abwarten.
-9. Unten links kontrollieren: `Version 2.6`.
-
-## Webflow-Konfiguration
-
-Root directory:
-
-```text
-./
-```
-
-Wenn die App unter `/portal` eingebunden ist, muss der Mount-Pfad der Webflow-Environment `/portal` sein.
-
-Die App verwendet zuerst die von Webflow bereitgestellte `BASE_URL`. Die ältere Variable kann vorerst zusätzlich bestehen bleiben:
-
-```text
-WEBFLOW_CLOUD_MOUNT_PATH=/portal
-```
-
-## Technische Struktur
-
-```text
-app/api/state/route.js        gemeinsamer SQLite-Datenstand
-app/api/health/route.js       Verbindungs- und Binding-Diagnose
-app/api/files/route.js        zentraler Datei-Upload und Download
-migrations/0001_shared_state.sql
-wrangler.json                 SQLite- und Object-Storage-Bindings
-components/PortalApp.jsx      Oberfläche und Live-Synchronisierung
-```
+- `DB`: Firmen, Benutzer, Projekte, Nachrichten, Lesestatus und Rückrufe
+- `CLOUD_FILES`: hochgeladene PDFs, Bilder und andere Dokumente
+- GitHub: Quellcode, Schema und Ausgangsdaten, nicht die laufenden Live-Daten
 
 ## Sicherheitsgrenze
 
-Version 2.6 ist weiterhin eine gemeinsame Vorführ- und Testversion. Der zentrale Speicher ist real, die Anmeldung verwendet aber weiterhin Vorführpasswörter und noch keine vollständig serverseitige Mandanten-Authentifizierung. Keine echten vertraulichen Kundenaufträge oder personenbezogenen Produktionsdaten einstellen.
+Version 2.7 ist eine gemeinsame Vorführversion. Die zentrale Speicherung ist real, die Anmeldung verwendet weiterhin Demo-Passwörter. Keine echten vertraulichen Produktionsdaten einstellen.

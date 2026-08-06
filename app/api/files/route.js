@@ -39,15 +39,11 @@ export async function POST(request) {
       }
     });
 
-    const basePath = process.env.WEBFLOW_CLOUD_MOUNT_PATH && process.env.WEBFLOW_CLOUD_MOUNT_PATH !== "/"
-      ? `/${process.env.WEBFLOW_CLOUD_MOUNT_PATH.replace(/^\/+|\/+$/g, "")}`
-      : "";
     return Response.json({
       key,
       fileName: file.name,
       mimeType: file.type || "application/octet-stream",
-      size: file.size,
-      url: `${basePath}/api/files?key=${encodeURIComponent(key)}`
+      size: file.size
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     console.error("File upload failed", error);

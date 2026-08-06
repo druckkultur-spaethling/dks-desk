@@ -1090,7 +1090,7 @@ body { font-size: 17px; }
 }
 .user-save-error { margin: 10px 16px 0; }
 
-/* Version 2.6 – stabilisierte Live-Synchronisierung */
+/* Version 2.7 – robuste Webflow-API-Pfadauflösung */
 .company-identity.empty-company { opacity: .82; }
 .company-identity.empty-company .company-logo { border-style: dashed; background: rgba(255,255,255,.025); }
 .sync-status { display: flex; align-items: center; gap: 9px; width: 100%; padding: 10px 11px; border: 1px solid var(--border); border-radius: 10px; background: rgba(255,255,255,.022); color: var(--text); text-align: left; cursor: pointer; }

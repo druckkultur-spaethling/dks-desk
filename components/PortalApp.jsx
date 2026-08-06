@@ -11,9 +11,56 @@ import {
   initialUsers
 } from "@/data/mock-data";
 
-const APP_VERSION = "2.6";
-const SESSION_KEY = "druckkultur-desk-session-v2.6";
-const API_BASE = process.env.NEXT_PUBLIC_BASE_PATH || "";
+const APP_VERSION = "2.7";
+const SESSION_KEY = "druckkultur-desk-session-v2.7";
+
+let resolvedApiBase = null;
+let lastApiAttempts = [];
+
+function normalizeApiBase(value = "") {
+  const clean = String(value || "").trim().replace(/^\/+|\/+$/g, "");
+  return clean ? `/${clean}` : "";
+}
+
+function runtimeApiBases() {
+  if (typeof window === "undefined") return [""];
+  const pathname = window.location.pathname.replace(/\/+$/g, "");
+  const currentPath = pathname && pathname !== "/" ? normalizeApiBase(pathname) : "";
+  const configuredPath = normalizeApiBase(process.env.NEXT_PUBLIC_BASE_PATH || "");
+  return [...new Set([currentPath, configuredPath, ""])];
+}
+
+function makeApiUrl(base, endpoint) {
+  const cleanEndpoint = String(endpoint || "").replace(/^\/+/, "");
+  return `${base}/api/${cleanEndpoint}`;
+}
+
+async function fetchPortalApi(endpoint, options = {}) {
+  const candidates = resolvedApiBase === null
+    ? runtimeApiBases()
+    : [...new Set([resolvedApiBase, ...runtimeApiBases()])];
+  let lastResponse = null;
+  const attempts = [];
+  for (const base of candidates) {
+    const url = makeApiUrl(base, endpoint);
+    attempts.push(url);
+    try {
+      const response = await fetch(url, options);
+      lastResponse = response;
+      if (response.status !== 404) {
+        resolvedApiBase = base;
+        lastApiAttempts = attempts;
+        return response;
+      }
+    } catch (error) {
+      lastApiAttempts = attempts;
+      if (candidates[candidates.length - 1] === base) throw error;
+    }
+  }
+  lastApiAttempts = attempts;
+  return lastResponse || new Response("API route not found", { status: 404 });
+}
+
 
 const baseNav = [
   { id: "dashboard", label: "Übersicht", icon: "home" },
@@ -298,23 +345,25 @@ export default function PortalApp() {
     if (announce) setNotice("Neue Änderungen von einem anderen Gerät wurden geladen.");
   }
 
-  function stateApiUrl() {
-    const separator = `${API_BASE}/api/state`.includes("?") ? "&" : "?";
-    return `${API_BASE}/api/state${separator}_=${Date.now()}`;
+  function stateApiEndpoint() {
+    return `state?_=${Date.now()}`;
   }
 
   async function readJsonResponse(response) {
     const text = await response.text();
     let payload = {};
     try { payload = text ? JSON.parse(text) : {}; }
-    catch { throw new Error(`Die Portal-API antwortet nicht korrekt (${response.status}). Prüfen Sie Mount-Pfad und Webflow-Deployment.`); }
+    catch {
+      const tested = lastApiAttempts.length ? ` Getestet: ${lastApiAttempts.join(", ")}.` : "";
+      throw new Error(`Die Portal-API antwortet nicht korrekt (${response.status}).${tested}`);
+    }
     if (!response.ok) throw new Error(payload.error || `Portal-API nicht erreichbar (${response.status}).`);
     return payload;
   }
 
   async function diagnoseConnection(fallbackMessage = "Gemeinsame Datenbank nicht erreichbar.") {
     try {
-      const response = await fetch(`${API_BASE}/api/health?_=${Date.now()}`, { cache: "no-store", headers: { "Accept": "application/json" } });
+      const response = await fetchPortalApi(`health?_=${Date.now()}`, { cache: "no-store", headers: { "Accept": "application/json" } });
       const text = await response.text();
       let payload = {};
       try { payload = text ? JSON.parse(text) : {}; } catch { return fallbackMessage; }
@@ -325,7 +374,7 @@ export default function PortalApp() {
   }
 
   async function loadSharedState(announce = false) {
-    const response = await fetch(stateApiUrl(), { cache: "no-store", headers: { "Accept": "application/json" } });
+    const response = await fetchPortalApi(stateApiEndpoint(), { cache: "no-store", headers: { "Accept": "application/json" } });
     const payload = await readJsonResponse(response);
     if (Number(payload.revision || 0) > revisionRef.current || !lastSerializedRef.current) applyRemoteState(payload, announce);
     else { setSyncStatus("online"); setSyncError(""); setLastSyncedAt(payload.updatedAt || lastSyncedAt); }
@@ -356,7 +405,7 @@ export default function PortalApp() {
           if (typeof parsed.currentUserId === "string") setCurrentUserId(parsed.currentUserId);
           if (typeof parsed.selectedCompanyId === "string") setSelectedCompanyId(parsed.selectedCompanyId);
         }
-        const response = await fetch(stateApiUrl(), { cache: "no-store", headers: { "Accept": "application/json" } });
+        const response = await fetchPortalApi(stateApiEndpoint(), { cache: "no-store", headers: { "Accept": "application/json" } });
         const payload = await readJsonResponse(response);
         if (!cancelled) applyRemoteState(payload);
       } catch (error) {
@@ -392,7 +441,7 @@ export default function PortalApp() {
       saveTimerRef.current = null;
       savingRef.current = true;
       try {
-        const response = await fetch(`${API_BASE}/api/state`, {
+        const response = await fetchPortalApi("state", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -731,7 +780,7 @@ export default function PortalApp() {
       formData.append("file", file);
       formData.append("companyId", companyId || "allgemein");
       formData.append("projectId", projectId || "ohne-projekt");
-      const response = await fetch(`${API_BASE}/api/files`, { method: "POST", body: formData });
+      const response = await fetchPortalApi("files", { method: "POST", body: formData });
       const uploaded = await response.json();
       if (!response.ok) throw new Error(uploaded.error || "Datei konnte nicht hochgeladen werden.");
       const document = {
@@ -747,7 +796,7 @@ export default function PortalApp() {
         fileName: uploaded.fileName || file.name,
         mimeType: uploaded.mimeType || file.type,
         storageKey: uploaded.key,
-        fileUrl: `${API_BASE}/api/files?key=${encodeURIComponent(uploaded.key)}`,
+        fileUrl: "",
         uploadedBy: currentUser.id,
         uploadedAt: new Date().toISOString()
       };
@@ -775,8 +824,9 @@ export default function PortalApp() {
   async function downloadDocument(document, project) {
     try {
       if (document.storageKey || document.fileUrl) {
-        const url = document.fileUrl || `${API_BASE}/api/files?key=${encodeURIComponent(document.storageKey)}`;
-        const response = await fetch(url, { cache: "no-store" });
+        const response = document.storageKey
+          ? await fetchPortalApi(`files?key=${encodeURIComponent(document.storageKey)}`, { cache: "no-store" })
+          : await fetch(document.fileUrl, { cache: "no-store" });
         if (!response.ok) throw new Error("Datei nicht gefunden");
         const blob = await response.blob();
         triggerDownload(blob, document.fileName || document.title);
@@ -955,7 +1005,7 @@ export default function PortalApp() {
   async function resetDemo() {
     if (!window.confirm("Soll die gemeinsame Vorführung für alle Geräte zurückgesetzt werden? Alle Projekte, Nachrichten, Einstellungen und Dokumenteinträge werden auf den Ausgangsstand gesetzt.")) return;
     try {
-      const response = await fetch(`${API_BASE}/api/state`, { method: "DELETE" });
+      const response = await fetchPortalApi("state", { method: "DELETE" });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "Zurücksetzen fehlgeschlagen.");
       applyRemoteState(payload);
@@ -1824,8 +1874,7 @@ function RequestView({ company, currentUser, onCreate }) {
       const formData = new FormData();
       formData.append("file", analysisFile);
       formData.append("company", company.name);
-      const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
-      const response = await fetch(`${basePath}/api/analyze-order`, { method: "POST", body: formData });
+      const response = await fetchPortalApi("analyze-order", { method: "POST", body: formData });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Die PDF-Analyse ist fehlgeschlagen.");
       const data = result.data || {};
