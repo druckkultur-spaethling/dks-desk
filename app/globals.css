@@ -1040,3 +1040,52 @@ body { font-size: 17px; }
 @media (max-width: 700px) {
   .project-card-statuses { justify-content: flex-start; }
 }
+
+/* Version 2.4 – Firmendaten und Benutzerverwaltung */
+.field-help,
+.field-feedback {
+  display: block;
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: .78rem;
+  line-height: 1.4;
+}
+.field-feedback { color: var(--brand-soft); }
+.user-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 9px;
+}
+.delete-user-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  color: var(--danger);
+  font-size: .75rem;
+  font-weight: 760;
+  cursor: pointer;
+}
+.delete-user-button:hover:not(:disabled) { background: color-mix(in srgb, var(--danger) 18%, transparent); }
+.delete-user-button:disabled { opacity: .34; }
+.user-basic-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+@media (max-width: 900px) {
+  .user-rights-list article > header { grid-template-columns: auto minmax(0, 1fr); }
+  .user-card-actions { grid-column: 1 / -1; justify-content: space-between; }
+  .user-basic-row { grid-template-columns: 1fr; }
+}
+.user-save-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  padding: 14px 16px 16px;
+  border-top: 1px solid var(--border);
+}
+.user-save-error { margin: 10px 16px 0; }

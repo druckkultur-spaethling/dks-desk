@@ -11,7 +11,7 @@ import {
   initialUsers
 } from "@/data/mock-data";
 
-const APP_VERSION = "2.3";
+const APP_VERSION = "2.4";
 const STORAGE_KEY = "druckkultur-desk-demo-v2.2";
 const FILE_DB = "druckkultur-desk-files";
 const FILE_STORE = "uploads";
@@ -83,6 +83,48 @@ function formatToday() { return new Intl.DateTimeFormat("de-DE", { weekday: "lon
 function formatDateTime() { return new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date()); }
 function formatDate() { return new Intl.DateTimeFormat("de-DE").format(new Date()); }
 function formatBytes(bytes) { if (!bytes) return "0 KB"; const units = ["B", "KB", "MB", "GB"]; const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1); return `${(bytes / 1024 ** i).toFixed(i > 1 ? 1 : 0)} ${units[i]}`; }
+function deriveCompanyShortName(name = "") {
+  const trimmed = name.trim();
+  const withoutLegalForm = trimmed.replace(/\s+(gmbh(?:\s*&\s*co\.\s*kg)?|ag|kg|ohg|ug(?:\s*\(haftungsbeschränkt\))?|e\.?k\.?|mbh)\s*$/i, "").trim();
+  return withoutLegalForm || trimmed || "Firma";
+}
+function deriveInitials(name = "") {
+  const ignored = new Set(["gmbh", "co", "kg", "ag", "ohg", "ug", "ek", "mbh"]);
+  const parts = name.replace(/[^a-zA-ZÄÖÜäöüß0-9\s]/g, " ").split(/\s+/).filter(Boolean).filter((part) => !ignored.has(part.toLocaleLowerCase("de")));
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts.slice(0, 2).map((part) => part[0]).join("") || "DK").toUpperCase();
+}
+function normalizeCompanyForVersion(company) {
+  const name = company.name?.trim() || "Unbenannte Firma";
+  return { ...company, name, shortName: deriveCompanyShortName(name), initials: company.initials || deriveInitials(name), logoData: company.logoData || "" };
+}
+function optimizeLogoFile(file) {
+  return new Promise((resolve, reject) => {
+    if (!file) return reject(new Error("Keine Bilddatei ausgewählt."));
+    if (!file.type.startsWith("image/") && !/\.(png|jpe?g|webp|svg)$/i.test(file.name)) return reject(new Error("Bitte PNG, JPG, WebP oder SVG auswählen."));
+    if (file.size > 5 * 1024 * 1024) return reject(new Error("Das Logo darf höchstens 5 MB groß sein."));
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      try {
+        const maxSize = 420;
+        const scale = Math.min(1, maxSize / Math.max(image.naturalWidth || maxSize, image.naturalHeight || maxSize));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round((image.naturalWidth || maxSize) * scale));
+        canvas.height = Math.max(1, Math.round((image.naturalHeight || maxSize) * scale));
+        const context = canvas.getContext("2d");
+        if (!context) throw new Error("Logo konnte nicht verarbeitet werden.");
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL("image/webp", 0.88);
+        URL.revokeObjectURL(url);
+        if (!dataUrl || dataUrl === "data:,") throw new Error("Logo konnte nicht gespeichert werden.");
+        resolve(dataUrl);
+      } catch (error) { URL.revokeObjectURL(url); reject(error); }
+    };
+    image.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Die Bilddatei konnte nicht gelesen werden.")); };
+    image.src = url;
+  });
+}
 function telHref(phone = "") { return `tel:${phone.replace(/[^+\d]/g, "")}`; }
 function teamsHref(account = "") { return `https://teams.microsoft.com/l/chat/0/0?users=${encodeURIComponent(account)}`; }
 function documentTypesFor(user) { return user?.type === "internal" ? internalDocumentTypes : customerDocumentTypes; }
@@ -220,7 +262,7 @@ function triggerDownload(blob, filename) {
 }
 
 export default function PortalApp() {
-  const [companies, setCompanies] = useState(initialCompanies);
+  const [companies, setCompanies] = useState(() => initialCompanies.map(normalizeCompanyForVersion));
   const [users, setUsers] = useState(() => initialUsers.map(normalizeUserForVersion));
   const [projects, setProjects] = useState(() => initialProjects.map(normalizeProjectForVersion));
   const [messages, setMessages] = useState(initialMessages);
@@ -237,13 +279,14 @@ export default function PortalApp() {
   const [messageTargetUserId, setMessageTargetUserId] = useState(null);
   const [callbackTargetUserId, setCallbackTargetUserId] = useState(null);
   const [dismissedCallbacks, setDismissedCallbacks] = useState([]);
+  const storageWarningShown = useRef(false);
 
   useEffect(() => {
     try {
       const saved = window.localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed.companies)) setCompanies(parsed.companies);
+        if (Array.isArray(parsed.companies)) setCompanies(parsed.companies.map(normalizeCompanyForVersion));
         if (Array.isArray(parsed.users)) setUsers(parsed.users.map(normalizeUserForVersion));
         if (Array.isArray(parsed.projects)) setProjects(parsed.projects.map(normalizeProjectForVersion));
         if (Array.isArray(parsed.messages)) setMessages(parsed.messages);
@@ -258,7 +301,16 @@ export default function PortalApp() {
 
   useEffect(() => {
     if (!hydrated) return;
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ companies, users, projects, messages, documents, callbacks, currentUserId, selectedCompanyId }));
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ companies, users, projects, messages, documents, callbacks, currentUserId, selectedCompanyId }));
+      storageWarningShown.current = false;
+    } catch (error) {
+      console.error("Vorführstand konnte nicht gespeichert werden.", error);
+      if (!storageWarningShown.current) {
+        storageWarningShown.current = true;
+        setNotice("Der Browserspeicher ist voll. Bitte ein kleineres Logo verwenden oder die Vorführung zurücksetzen.");
+      }
+    }
   }, [hydrated, companies, users, projects, messages, documents, callbacks, currentUserId, selectedCompanyId]);
 
   useEffect(() => {
@@ -327,10 +379,13 @@ export default function PortalApp() {
   const popupCallback = pendingCallbacksForUser.find((entry) => !dismissedCallbacks.includes(entry.id));
   const selectedProject = projects.find((project) => project.id === selectedProjectId && canSeeProject(currentUser, project)) || null;
 
-  function login(email, password) {
+  function login(email, password, loginType) {
     const normalized = email.trim().toLocaleLowerCase("de");
-    const user = users.find((entry) => entry.email.toLocaleLowerCase("de") === normalized && entry.password === password);
+    const user = users.find((entry) => entry.email.toLocaleLowerCase("de") === normalized && entry.password === password && !entry.deleted && (!loginType || entry.type === loginType));
     if (!user) return false;
+    if (user.type === "internal") {
+      setUsers((current) => current.map((entry) => entry.id === user.id ? { ...entry, availabilityStatus: "available", availabilityUpdatedAt: formatDateTime() } : entry));
+    }
     setCurrentUserId(user.id);
     setSelectedCompanyId(user.type === "customer" ? user.companyId : user.companyIds[0]);
     setActiveView(user.type === "internal" ? "companies" : "dashboard");
@@ -339,7 +394,12 @@ export default function PortalApp() {
     setDismissedCallbacks([]);
     return true;
   }
-  function logout() { setCurrentUserId(null); setSelectedCompanyId(null); setSelectedProjectId(null); setActiveView("dashboard"); setSearchTerm(""); setMessageTargetUserId(null); }
+  function logout() {
+    if (currentUser?.type === "internal") {
+      setUsers((current) => current.map((user) => user.id === currentUser.id ? { ...user, availabilityStatus: "offline", availabilityUpdatedAt: formatDateTime() } : user));
+    }
+    setCurrentUserId(null); setSelectedCompanyId(null); setSelectedProjectId(null); setActiveView("dashboard"); setSearchTerm(""); setMessageTargetUserId(null);
+  }
   function navigate(view) { setActiveView(view); if (view !== "project") setSelectedProjectId(null); setMobileMenuOpen(false); window.requestAnimationFrame(() => document.getElementById("main-content")?.focus()); }
   function switchCompany(companyId) { setSelectedCompanyId(companyId); setSelectedProjectId(null); setSearchTerm(""); setActiveView("dashboard"); setMobileMenuOpen(false); }
   function openProject(projectId) {
@@ -497,7 +557,7 @@ export default function PortalApp() {
       const companyId = currentCompany.id;
       const ownerUserIds = currentUser.type === "customer"
         ? [currentUser.id]
-        : users.filter((user) => user.type === "customer" && user.companyId === companyId && user.rights.viewAllProjects).slice(0, 1).map((user) => user.id);
+        : users.filter((user) => user.type === "customer" && !user.deleted && user.companyId === companyId && user.rights.viewAllProjects).slice(0, 1).map((user) => user.id);
       const specificationParts = [
         request.description,
         request.format ? `Format: ${request.format}` : "",
@@ -605,19 +665,64 @@ export default function PortalApp() {
     setNotice(`Status auf „${availabilityOptions[status].label}“ gesetzt.`);
   }
 
-  function updateCompany(companyId, patch) { setCompanies((current) => current.map((company) => company.id === companyId ? { ...company, ...patch } : company)); setNotice("Firmeneinstellungen gespeichert."); }
-  function updateUser(userId, patch) { setUsers((current) => current.map((user) => user.id === userId ? { ...user, ...patch, rights: patch.rights ? { ...user.rights, ...patch.rights } : user.rights } : user)); setNotice("Benutzerdaten gespeichert."); }
-  function inviteUser(companyId, form) {
-    const id = `${companyId}-${Date.now()}`;
-    setUsers((current) => [...current, { id, type: "customer", companyId, name: form.name, firstName: form.name.split(" ")[0], email: form.email, phone: form.phone, teamsAccount: form.teamsAccount || form.email, password: "demo", roleLabel: form.roleLabel || "Mitarbeiter/in", initials: form.name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase(), rights: { viewAllProjects: false, manageCompany: false, manageUsers: false, approve: false, viewFinancials: false, createRequests: true } }]);
-    setNotice("Benutzer wurde angelegt und kann sich im Vorführmodus anmelden.");
+  function updateCompany(companyId, patch) {
+    setCompanies((current) => current.map((company) => {
+      if (company.id !== companyId) return company;
+      const name = patch.name?.trim() || company.name;
+      const nameChanged = name !== company.name;
+      return normalizeCompanyForVersion({ ...company, ...patch, name, shortName: deriveCompanyShortName(name), initials: nameChanged ? deriveInitials(name) : company.initials, logoUpdatedAt: Date.now() });
+    }));
+    setNotice("Firmenname, Kurzname, Initialen, Farbwelt und Logo wurden überall aktualisiert.");
   }
-  function resetDemo() { setCompanies(initialCompanies); setUsers(initialUsers.map(normalizeUserForVersion)); setProjects(initialProjects.map(normalizeProjectForVersion)); setMessages(initialMessages); setDocuments(initialDocuments); setCallbacks(initialCallbacks); setCurrentUserId(null); setSelectedCompanyId(null); setActiveView("dashboard"); setSelectedProjectId(null); window.localStorage.removeItem(STORAGE_KEY); }
+  function updateUser(userId, patch) {
+    const target = users.find((user) => user.id === userId);
+    if (!target || target.deleted) return false;
+    const name = (patch.name ?? target.name).trim();
+    const email = (patch.email ?? target.email).trim().toLocaleLowerCase("de");
+    if (!name) { setNotice("Der Benutzername darf nicht leer sein."); return false; }
+    if (!email || !email.includes("@")) { setNotice("Bitte eine gültige E-Mail-Adresse eintragen."); return false; }
+    if (users.some((user) => !user.deleted && user.id !== userId && user.email.toLocaleLowerCase("de") === email)) { setNotice("Diese E-Mail-Adresse ist bereits einem anderen Benutzer zugeordnet."); return false; }
+    setUsers((current) => current.map((user) => user.id === userId ? { ...user, ...patch, name, email, firstName: name.split(/\s+/)[0], initials: deriveInitials(name), rights: patch.rights ? { ...user.rights, ...patch.rights } : user.rights } : user));
+    setNotice("Benutzerdaten und Rechte wurden gespeichert.");
+    return true;
+  }
+  function inviteUser(companyId, form) {
+    const email = form.email.trim().toLocaleLowerCase("de");
+    if (users.some((user) => !user.deleted && user.email.toLocaleLowerCase("de") === email)) { setNotice("Diese E-Mail-Adresse ist bereits einem Benutzer zugeordnet."); return false; }
+    const id = `${companyId}-${Date.now()}`;
+    const name = form.name.trim();
+    setUsers((current) => [...current, { id, type: "customer", companyId, name, firstName: name.split(/\s+/)[0], email, phone: form.phone.trim(), teamsAccount: form.teamsAccount.trim() || email, password: "demo", roleLabel: form.roleLabel.trim() || "Mitarbeiter/in", initials: deriveInitials(name), rights: { viewAllProjects: false, manageCompany: false, manageUsers: false, approve: false, viewFinancials: false, createRequests: true } }]);
+    setNotice("Benutzer wurde angelegt und kann sich im Vorführmodus anmelden.");
+    return true;
+  }
+  function deleteUser(userId) {
+    const target = users.find((user) => user.id === userId && user.type === "customer");
+    if (!target) return;
+    if (target.id === currentUser?.id) { setNotice("Der aktuell angemeldete Benutzer kann nicht gelöscht werden."); return; }
+    const companyUsers = users.filter((user) => user.type === "customer" && !user.deleted && user.companyId === target.companyId);
+    if (companyUsers.length <= 1) { setNotice("Der letzte Benutzer einer Firma kann nicht gelöscht werden."); return; }
+    const remainingManagers = companyUsers.filter((user) => user.id !== target.id && user.rights.manageUsers);
+    if (target.rights.manageUsers && currentUser?.type === "customer" && remainingManagers.length === 0) { setNotice("Mindestens ein weiterer Firmenbenutzer muss Benutzer verwalten dürfen."); return; }
+    if (!window.confirm(`Soll ${target.name} wirklich gelöscht werden? Die bisherigen Projekt- und Nachrichtenverläufe bleiben erhalten.`)) return;
+    const fallbackOwner = companyUsers.find((user) => user.id !== target.id && user.rights.viewAllProjects)?.id || companyUsers.find((user) => user.id !== target.id)?.id;
+    setUsers((current) => current.map((user) => user.id === target.id ? { ...user, deleted: true, deletedAt: formatDateTime(), availabilityStatus: "offline" } : user));
+    setProjects((current) => current.map((project) => {
+      if (project.companyId !== target.companyId || !project.ownerUserIds.includes(target.id)) return project;
+      const ownerUserIds = project.ownerUserIds.filter((id) => id !== target.id);
+      return { ...project, ownerUserIds: ownerUserIds.length ? ownerUserIds : (fallbackOwner ? [fallbackOwner] : []) };
+    }));
+    setCallbacks((current) => current.filter((entry) => entry.requesterUserId !== target.id));
+    setNotice(`${target.name} wurde gelöscht. Der Login ist gesperrt; historische Projekt- und Nachrichtenverläufe bleiben erhalten.`);
+  }
+  function resetDemo() {
+    setCompanies(initialCompanies.map(normalizeCompanyForVersion)); setUsers(initialUsers.map(normalizeUserForVersion)); setProjects(initialProjects.map(normalizeProjectForVersion)); setMessages(initialMessages); setDocuments(initialDocuments); setCallbacks(initialCallbacks); setCurrentUserId(null); setSelectedCompanyId(null); setActiveView("dashboard"); setSelectedProjectId(null); window.localStorage.removeItem(STORAGE_KEY);
+    if ("indexedDB" in window) window.indexedDB.deleteDatabase(FILE_DB);
+  }
 
   if (!hydrated) return <div className="loading-screen">druckkultur desk wird geladen …</div>;
   if (!currentUser) return <LoginScreen users={users} companies={companies} onLogin={login} />;
 
-  const canManageCompany = currentUser.type === "internal" || currentUser.rights.manageCompany || currentUser.rights.manageUsers;
+  const canManageCompany = currentUser.type === "internal" ? Boolean(currentUser.rights.manageCompanies) : Boolean(currentUser.rights.manageCompany || currentUser.rights.manageUsers);
   const navItems = [
     ...(currentUser.type === "internal" ? [{ id: "companies", label: "Firmenübersicht", icon: "layers" }, { id: "callbacks", label: "Rückrufzentrale", icon: "phone" }] : []),
     ...baseNav.filter((item) => item.id !== "request" || currentUser.type === "internal" || currentUser.rights.createRequests),
@@ -641,7 +746,7 @@ export default function PortalApp() {
           {activeView === "request" && <RequestView company={currentCompany} currentUser={currentUser} onCreate={createRequest} />}
           {activeView === "team" && <TeamView company={currentCompany} users={users} currentUser={currentUser} onMessage={openDirectMessage} onCallback={(id) => setCallbackTargetUserId(id)} />}
           {activeView === "callbacks" && currentUser.type === "internal" && <CallbacksView callbacks={callbacks.filter((entry) => entry.assignedUserId === currentUser.id)} users={users} companies={companies} onComplete={completeCallback} onOpenCompany={switchCompany} />}
-          {activeView === "settings" && canManageCompany && <CompanySettingsView company={currentCompany} users={users.filter((user) => user.type === "customer" && user.companyId === currentCompany.id)} currentUser={currentUser} onUpdateCompany={updateCompany} onUpdateUser={updateUser} onInvite={inviteUser} />}
+          {activeView === "settings" && canManageCompany && <CompanySettingsView company={currentCompany} users={users.filter((user) => user.type === "customer" && !user.deleted && user.companyId === currentCompany.id)} currentUser={currentUser} onUpdateCompany={updateCompany} onUpdateUser={updateUser} onInvite={inviteUser} onDeleteUser={deleteUser} />}
         </main>
       </div>
       {callbackTargetUserId && <CallbackRequestModal target={getUser(users, callbackTargetUserId)} currentUser={currentUser} onClose={() => setCallbackTargetUserId(null)} onSubmit={(form) => requestCallback(callbackTargetUserId, form)} />}
@@ -653,26 +758,26 @@ export default function PortalApp() {
 
 function LoginScreen({ users, companies, onLogin }) {
   const [mode, setMode] = useState("customer");
-  const candidates = users.filter((user) => user.type === mode);
+  const candidates = users.filter((user) => user.type === mode && !user.deleted);
   const [email, setEmail] = useState(candidates[0]?.email || "");
   const [password, setPassword] = useState("demo");
   const [error, setError] = useState("");
-  useEffect(() => { const first = users.find((user) => user.type === mode); setEmail(first?.email || ""); setPassword("demo"); setError(""); }, [mode, users]);
-  function submit(event) { event.preventDefault(); if (!onLogin(email, password)) setError("E-Mail oder Passwort stimmen nicht. Im Vorführmodus lautet das Passwort „demo“."); }
-  return <main className="login-page"><section className="login-brand"><div className="login-logo"><Icon name="print" size={40} /><span><strong>druckkultur</strong><small>desk</small></span></div><p className="eyebrow">Ihre externe Druckabteilung</p><h1>Direkter Kontakt. Alle Printprojekte an einem Ort.</h1><p>Beratung, Nachrichten, Dateien, Freigaben, Rückrufe und Projektsteuerung in einem gemeinsamen Arbeitsraum.</p><div className="login-features"><span><Icon name="users" size={22} /> Persönliche Ansprechpartner</span><span><Icon name="fileCheck" size={22} /> Echte Dateiablage im Browser</span><span><Icon name="phone" size={22} /> Sichtbare Rückrufwünsche</span></div></section><section className="login-panel"><div className="login-card"><div className="login-tabs"><button className={mode === "customer" ? "active" : ""} onClick={() => setMode("customer")}>Kundenlogin</button><button className={mode === "internal" ? "active" : ""} onClick={() => setMode("internal")}>Mitarbeiterlogin</button></div><div className="login-heading"><span className="eyebrow">Vorführmodus</span><h2>{mode === "customer" ? "Als Kunde anmelden" : "Als druckkultur-Mitarbeiter anmelden"}</h2></div><form onSubmit={submit}><label className="form-field"><span>E-Mail-Adresse</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label><label className="form-field"><span>Passwort</span><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>{error && <p className="form-error">{error}</p>}<button className="primary-button wide-button" type="submit">Anmelden <Icon name="arrow" size={19} /></button></form><div className="demo-accounts"><strong>Zugang auswählen</strong><p>Passwort ist bei allen Konten <code>demo</code>.</p><div className="demo-account-list">{candidates.map((user) => { const company = getCompany(companies, user.companyId); return <button key={user.id} onClick={() => { setEmail(user.email); setPassword("demo"); }}><span className="avatar">{user.initials}</span><span><strong>{user.name}</strong><small>{company ? `${company.shortName} · ` : ""}{user.roleLabel}</small></span></button>; })}</div></div><p className="demo-note"><Icon name="shield" size={17} />Die Vorführung speichert Änderungen in diesem Browser. Für den echten Mehrbenutzerbetrieb werden Server-Login, Datenbank und geschützte Dateiablage ergänzt.</p></div></section></main>;
+  useEffect(() => { const first = users.find((user) => user.type === mode && !user.deleted); setEmail(first?.email || ""); setPassword("demo"); setError(""); }, [mode, users]);
+  function submit(event) { event.preventDefault(); if (!onLogin(email, password, mode)) setError(`${mode === "customer" ? "Kundenkonto" : "Mitarbeiterkonto"} nicht gefunden oder Passwort falsch. Im Vorführmodus lautet das Passwort „demo“.`); }
+  return <main className="login-page"><section className="login-brand"><div className="login-logo"><Icon name="print" size={40} /><span><strong>druckkultur</strong><small>desk</small></span></div><p className="eyebrow">Ihre externe Druckabteilung</p><h1>Direkter Kontakt. Alle Printprojekte an einem Ort.</h1><p>Beratung, Nachrichten, Dateien, Freigaben, Rückrufe und Projektsteuerung in einem gemeinsamen Arbeitsraum.</p><div className="login-features"><span><Icon name="users" size={22} /> Persönliche Ansprechpartner</span><span><Icon name="fileCheck" size={22} /> Echte Dateiablage im Browser</span><span><Icon name="phone" size={22} /> Sichtbare Rückrufwünsche</span></div></section><section className="login-panel"><div className="login-card"><div className="login-tabs"><button className={mode === "customer" ? "active" : ""} onClick={() => { setMode("customer"); setError(""); }}>Kundenlogin</button><button className={mode === "internal" ? "active" : ""} onClick={() => { setMode("internal"); setError(""); }}>Mitarbeiterlogin</button></div><div className="login-heading"><span className="eyebrow">Vorführmodus</span><h2>{mode === "customer" ? "Als Kunde anmelden" : "Als druckkultur-Mitarbeiter anmelden"}</h2></div><form onSubmit={submit}><label className="form-field"><span>E-Mail-Adresse</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label><label className="form-field"><span>Passwort</span><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>{error && <p className="form-error">{error}</p>}<button className="primary-button wide-button" type="submit">Anmelden <Icon name="arrow" size={19} /></button></form><div className="demo-accounts"><strong>Zugang auswählen</strong><p>Passwort ist bei allen Konten <code>demo</code>.</p><div className="demo-account-list">{candidates.map((user) => { const company = getCompany(companies, user.companyId); return <button key={user.id} onClick={() => { setEmail(user.email); setPassword("demo"); }}><span className="avatar">{user.initials}</span><span><strong>{user.name}</strong><small>{company ? `${company.shortName} · ` : ""}{user.roleLabel}</small></span></button>; })}</div></div><p className="demo-note"><Icon name="shield" size={17} />Die Vorführung speichert Änderungen in diesem Browser. Für den echten Mehrbenutzerbetrieb werden Server-Login, Datenbank und geschützte Dateiablage ergänzt.</p></div></section></main>;
 }
 
 function Sidebar({ navItems, activeView, currentUser, currentCompany, companies, unreadByCompany, newProjectsByCompany, callbackByCompany, mobileOpen, onNavigate, onSwitchCompany, onClose, onLogout, onReset, onAvailabilityChange }) {
   const availability = availabilityOptions[currentUser.availabilityStatus || "available"];
-  return <><button className={classNames("mobile-backdrop", mobileOpen && "visible")} onClick={onClose} aria-label="Menü schließen" /><aside className={classNames("sidebar", mobileOpen && "mobile-open")}><div className="brand-lockup"><span className="brand-mark"><Icon name="print" size={28} /></span><span><strong>druckkultur</strong><small>desk</small></span></div><div className="company-identity"><CompanyLogo company={currentCompany} /><div><span>{currentUser.type === "internal" ? "Aktive Firma" : "Ihr Unternehmen"}</span><strong>{currentCompany?.name}</strong></div></div>{currentUser.type === "internal" && <div className="company-switcher"><div className="sidebar-label"><span>Firmen wechseln</span></div><div className="company-switch-list">{companies.map((company) => <button key={company.id} className={company.id === currentCompany?.id ? "active" : ""} onClick={() => onSwitchCompany(company.id)}><CompanyLogo company={company} compact /><span><strong>{company.shortName}</strong><small>{company.customerNumber}</small></span><span className="company-alerts">{(newProjectsByCompany[company.id] || 0) > 0 && <b className="project-badge" title="Neue Projekte"><Icon name="projects" size={12} />{newProjectsByCompany[company.id]}</b>}{(unreadByCompany[company.id] || 0) > 0 && <b className="count-badge" title="Ungelesene Nachrichten">{unreadByCompany[company.id]}</b>}{(callbackByCompany[company.id] || 0) > 0 && <b className="phone-badge" title="Offene Rückrufe"><Icon name="phone" size={12} />{callbackByCompany[company.id]}</b>}</span></button>)}</div></div>}<nav className="main-nav">{navItems.map((item) => <button key={item.id} className={activeView === item.id ? "active" : ""} onClick={() => onNavigate(item.id)}><Icon name={item.icon} size={22} /><span>{item.label}</span>{item.id === "projects" && (newProjectsByCompany[currentCompany?.id] || 0) > 0 && <b className="project-badge"><Icon name="projects" size={12} />{newProjectsByCompany[currentCompany.id]}</b>}{item.id === "messages" && (unreadByCompany[currentCompany?.id] || 0) > 0 && <b className="count-badge">{unreadByCompany[currentCompany.id]}</b>}{item.id === "callbacks" && (callbackByCompany[currentCompany?.id] || 0) > 0 && <b className="phone-badge">{callbackByCompany[currentCompany.id]}</b>}</button>)}</nav><div className="sidebar-footer"><div className="signed-in-user"><span className="avatar">{currentUser.initials}</span><span><strong>{currentUser.name}</strong><small>{currentUser.roleLabel}</small></span></div>{currentUser.type === "internal" && <label className={classNames("availability-select", availability.tone)}><span><i />Eigener Status</span><select value={currentUser.availabilityStatus || "available"} onChange={(event) => onAvailabilityChange(event.target.value)}>{Object.entries(availabilityOptions).map(([value, option]) => <option value={value} key={value}>{option.label}</option>)}</select><small>{availability.description}</small></label>}<div className="sidebar-version">Version {APP_VERSION}</div><div className="sidebar-footer-actions"><button onClick={onLogout}>Abmelden</button><button onClick={onReset}>Vorführung zurücksetzen</button></div></div></aside></>;
+  return <><button className={classNames("mobile-backdrop", mobileOpen && "visible")} onClick={onClose} aria-label="Menü schließen" /><aside className={classNames("sidebar", mobileOpen && "mobile-open")}><div className="brand-lockup"><span className="brand-mark"><Icon name="print" size={28} /></span><span><strong>druckkultur</strong><small>desk</small></span></div><div className="company-identity"><CompanyLogo company={currentCompany} /><div><span>{currentUser.type === "internal" ? "Aktive Firma" : "Ihr Unternehmen"}</span><strong>{currentCompany?.name}</strong></div></div>{currentUser.type === "internal" && <div className="company-switcher"><div className="sidebar-label"><span>Firmen wechseln</span></div><div className="company-switch-list">{companies.map((company) => <button key={company.id} className={company.id === currentCompany?.id ? "active" : ""} onClick={() => onSwitchCompany(company.id)}><CompanyLogo company={company} compact /><span><strong>{company.name}</strong><small>{company.customerNumber}</small></span><span className="company-alerts">{(newProjectsByCompany[company.id] || 0) > 0 && <b className="project-badge" title="Neue Projekte"><Icon name="projects" size={12} />{newProjectsByCompany[company.id]}</b>}{(unreadByCompany[company.id] || 0) > 0 && <b className="count-badge" title="Ungelesene Nachrichten">{unreadByCompany[company.id]}</b>}{(callbackByCompany[company.id] || 0) > 0 && <b className="phone-badge" title="Offene Rückrufe"><Icon name="phone" size={12} />{callbackByCompany[company.id]}</b>}</span></button>)}</div></div>}<nav className="main-nav">{navItems.map((item) => <button key={item.id} className={activeView === item.id ? "active" : ""} onClick={() => onNavigate(item.id)}><Icon name={item.icon} size={22} /><span>{item.label}</span>{item.id === "projects" && (newProjectsByCompany[currentCompany?.id] || 0) > 0 && <b className="project-badge"><Icon name="projects" size={12} />{newProjectsByCompany[currentCompany.id]}</b>}{item.id === "messages" && (unreadByCompany[currentCompany?.id] || 0) > 0 && <b className="count-badge">{unreadByCompany[currentCompany.id]}</b>}{item.id === "callbacks" && (callbackByCompany[currentCompany?.id] || 0) > 0 && <b className="phone-badge">{callbackByCompany[currentCompany.id]}</b>}</button>)}</nav><div className="sidebar-footer"><div className="signed-in-user"><span className="avatar">{currentUser.initials}</span><span><strong>{currentUser.name}</strong><small>{currentUser.roleLabel}</small></span></div>{currentUser.type === "internal" && <label className={classNames("availability-select", availability.tone)}><span><i />Eigener Status</span><select value={currentUser.availabilityStatus || "available"} onChange={(event) => onAvailabilityChange(event.target.value)}>{Object.entries(availabilityOptions).map(([value, option]) => <option value={value} key={value}>{option.label}</option>)}</select><small>{availability.description}</small></label>}<div className="sidebar-version">Version {APP_VERSION}</div><div className="sidebar-footer-actions"><button onClick={onLogout}>Abmelden</button><button onClick={onReset}>Vorführung zurücksetzen</button></div></div></aside></>;
 }
 function Topbar({ currentUser, currentCompany, searchTerm, unreadCount, callbackCount, onSearch, onMenu, onMessages, onCallbacks, onLogout }) {
   return <header className="topbar"><button className="icon-button mobile-menu" onClick={onMenu}><Icon name="menu" /></button><div className="topbar-context"><span>{currentCompany?.shortName}</span><strong>{formatToday()}</strong></div><label className="global-search"><Icon name="search" size={21} /><input value={searchTerm} onChange={(event) => onSearch(event.target.value)} placeholder="Projekt, Auftrag oder Status suchen …" /></label><div className="topbar-actions">{currentUser.type === "internal" && <button className="notification-button callback-topbar" onClick={onCallbacks} aria-label={`${callbackCount} offene Rückrufe`}><Icon name="phone" size={22} />{callbackCount > 0 && <b>{callbackCount}</b>}</button>}<button className="notification-button" onClick={onMessages}><Icon name="bell" size={22} />{unreadCount > 0 && <b>{unreadCount}</b>}</button><div className="topbar-user"><span className="avatar">{currentUser.initials}</span><span><strong>{currentUser.firstName}</strong><small>{currentUser.type === "internal" ? "druckkultur" : currentUser.roleLabel}</small></span><button onClick={onLogout}><Icon name="external" size={17} /></button></div></div></header>;
 }
-function CompanyLogo({ company, compact = false }) { return company?.logoData ? <span className={classNames("company-logo", compact && "compact")}><img src={company.logoData} alt={`${company.name} Logo`} /></span> : <span className={classNames("company-logo", compact && "compact")}>{company?.initials || "DK"}</span>; }
+function CompanyLogo({ company, compact = false }) { return company?.logoData ? <span className={classNames("company-logo", compact && "compact")}><img key={company.logoUpdatedAt || company.logoData.length} src={company.logoData} alt={`${company.name} Logo`} /></span> : <span className={classNames("company-logo", compact && "compact")}>{company?.initials || "DK"}</span>; }
 
 function CompaniesView({ companies, projects, unreadByCompany, newProjectsByCompany, callbackByCompany, users, onOpen }) {
-  return <div className="page-stack"><PageHeader eyebrow="Mandantenübersicht" title="Alle betreuten Firmen" lead="Neue Nachrichten, Rückrufwünsche und offene Entscheidungen bleiben sichtbar, auch wenn Sie gerade in einer anderen Firma arbeiten." /><section className="company-grid">{companies.map((company) => { const companyProjects = projects.filter((project) => project.companyId === company.id); const open = companyProjects.filter((project) => project.progress < 100).length; const attention = companyProjects.filter((project) => project.statusTone === "warning").length; const customerUsers = users.filter((user) => user.type === "customer" && user.companyId === company.id).length; return <button className="company-card" key={company.id} onClick={() => onOpen(company.id)}><div className="company-card-head"><CompanyLogo company={company} /><div><span>{company.customerNumber}</span><h2>{company.name}</h2><p>{company.industry}</p></div><div className="company-card-alerts">{newProjectsByCompany[company.id] > 0 && <b className="project-new-pill"><Icon name="projects" size={14} /> {newProjectsByCompany[company.id]} neue Projekte</b>}{unreadByCompany[company.id] > 0 && <b className="new-pill">{unreadByCompany[company.id]} Nachrichten</b>}{callbackByCompany[company.id] > 0 && <b className="callback-pill"><Icon name="phone" size={14} /> {callbackByCompany[company.id]} Rückruf</b>}</div></div><div className="company-metrics"><div><strong>{open}</strong><span>laufende Projekte</span></div><div><strong>{attention}</strong><span>offene Entscheidungen</span></div><div><strong>{customerUsers}</strong><span>Kundenzugänge</span></div></div><span className="company-open">Arbeitsraum öffnen <Icon name="arrow" size={18} /></span></button>; })}</section></div>;
+  return <div className="page-stack"><PageHeader eyebrow="Mandantenübersicht" title="Alle betreuten Firmen" lead="Neue Nachrichten, Rückrufwünsche und offene Entscheidungen bleiben sichtbar, auch wenn Sie gerade in einer anderen Firma arbeiten." /><section className="company-grid">{companies.map((company) => { const companyProjects = projects.filter((project) => project.companyId === company.id); const open = companyProjects.filter((project) => project.progress < 100).length; const attention = companyProjects.filter((project) => project.statusTone === "warning").length; const customerUsers = users.filter((user) => user.type === "customer" && !user.deleted && user.companyId === company.id).length; return <button className="company-card" key={company.id} onClick={() => onOpen(company.id)}><div className="company-card-head"><CompanyLogo company={company} /><div><span>{company.customerNumber}</span><h2>{company.name}</h2><p>{company.industry}</p></div><div className="company-card-alerts">{newProjectsByCompany[company.id] > 0 && <b className="project-new-pill"><Icon name="projects" size={14} /> {newProjectsByCompany[company.id]} neue Projekte</b>}{unreadByCompany[company.id] > 0 && <b className="new-pill">{unreadByCompany[company.id]} Nachrichten</b>}{callbackByCompany[company.id] > 0 && <b className="callback-pill"><Icon name="phone" size={14} /> {callbackByCompany[company.id]} Rückruf</b>}</div></div><div className="company-metrics"><div><strong>{open}</strong><span>laufende Projekte</span></div><div><strong>{attention}</strong><span>offene Entscheidungen</span></div><div><strong>{customerUsers}</strong><span>Kundenzugänge</span></div></div><span className="company-open">Arbeitsraum öffnen <Icon name="arrow" size={18} /></span></button>; })}</section></div>;
 }
 
 function DashboardView({ currentUser, company, projects, messages, callbacks, users, unreadByCompany, newProjectsByCompany, callbackByCompany, companies, onOpenProject, onNavigate, onApprove, onSwitchCompany }) {
@@ -873,7 +978,7 @@ function ProjectDetailView({ project, users, currentUser, messages, documents, o
       {tab === "messages" && (
         <section className="panel project-communication">
           <div className="project-message-stream">
-            {[...messages].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)).map((message) => {
+            {[...messages].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()).map((message) => {
               const sender = getUser(users, message.senderUserId);
               const own = message.senderUserId === currentUser.id;
               return (
@@ -910,7 +1015,7 @@ function ProjectDetailView({ project, users, currentUser, messages, documents, o
 }
 
 function ProjectControlPanel({ project, users, onSave }) {
-  const customerUsers = users.filter((user) => user.type === "customer" && user.companyId === project.companyId);
+  const customerUsers = users.filter((user) => user.type === "customer" && !user.deleted && user.companyId === project.companyId);
   const internalUsers = users.filter((user) => user.type === "internal" && user.companyIds.includes(project.companyId));
   const [draft, setDraft] = useState({
     status: project.status,
@@ -1050,7 +1155,7 @@ function ProjectControlPanel({ project, users, onSave }) {
 function MessagesView({ messages, projects, users, company, currentUser, initialTargetUserId, onTargetUsed, onSendProject, onSendDirect, onMarkRead }) {
   const possibleContacts = users.filter((user) =>
     currentUser.type === "internal"
-      ? user.type === "customer" && user.companyId === company.id
+      ? user.type === "customer" && !user.deleted && user.companyId === company.id
       : user.type === "internal" && company.assignedTeam.includes(user.id)
   );
   const directMessages = messages.filter((message) => message.threadType === "direct");
@@ -1073,7 +1178,8 @@ function MessagesView({ messages, projects, users, company, currentUser, initial
     type: "direct",
     partnerId: id,
     title: user.name,
-    subtitle: `Direkter Kontakt · ${user.roleLabel}`
+    subtitle: user.deleted ? "Gelöschter Benutzer · Verlauf nur lesbar" : `Direkter Kontakt · ${user.roleLabel}`,
+    disabled: Boolean(user.deleted)
   }));
   const threads = [...directThreads, ...projectThreads];
   const preferred = initialTargetUserId ? directThreadId(company.id, currentUser.id, initialTargetUserId) : null;
@@ -1103,7 +1209,7 @@ function MessagesView({ messages, projects, users, company, currentUser, initial
 
   const active = threads.find((thread) => thread.id === activeThreadId) || null;
   const threadMessages = active
-    ? messages.filter((message) => threadIdForMessage(message) === active.id).sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+    ? messages.filter((message) => threadIdForMessage(message) === active.id).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
     : [];
 
   function beginNewMessage() {
@@ -1125,7 +1231,7 @@ function MessagesView({ messages, projects, users, company, currentUser, initial
 
   function send(event) {
     event.preventDefault();
-    if (!draft.trim() || !active) return;
+    if (!draft.trim() || !active || active.disabled) return;
     if (active.type === "project") onSendProject(active.project.id, draft);
     else onSendDirect(active.partnerId, draft);
     setDraft("");
@@ -1224,10 +1330,10 @@ function MessagesView({ messages, projects, users, company, currentUser, initial
                 {!threadMessages.length && <EmptyState title="Neue Unterhaltung" text="Schreiben Sie die erste Nachricht. Sie wird dem gewählten Kontakt oder Projekt zugeordnet." />}
               </div>
               <form className="message-composer" onSubmit={send}>
-                <textarea rows="4" value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={active.type === "direct" ? `Nachricht an ${active.title} …` : "Nachricht zum Projekt …"} />
+                <textarea rows="4" value={draft} disabled={Boolean(active.disabled)} onChange={(event) => setDraft(event.target.value)} placeholder={active.disabled ? "Dieser Benutzer wurde gelöscht. Der Verlauf bleibt lesbar." : active.type === "direct" ? `Nachricht an ${active.title} …` : "Nachricht zum Projekt …"} />
                 <div>
                   <span>{active.type === "direct" ? "Persönliche Nachricht an den gewählten Kontakt." : "Dauerhaft dem Projekt zugeordnet."}</span>
-                  <button className="primary-button" type="submit">Senden <Icon name="send" size={18} /></button>
+                  <button className="primary-button" type="submit" disabled={Boolean(active.disabled)}>Senden <Icon name="send" size={18} /></button>
                 </div>
               </form>
             </>
@@ -1661,7 +1767,7 @@ function RequestView({ company, currentUser, onCreate }) {
 }
 function TeamView({ company, users, currentUser, onMessage, onCallback }) {
   const internalTeam = company.assignedTeam.map((id) => getUser(users, id)).filter(Boolean);
-  const customerTeam = users.filter((user) => user.type === "customer" && user.companyId === company.id);
+  const customerTeam = users.filter((user) => user.type === "customer" && !user.deleted && user.companyId === company.id);
   const people = currentUser.type === "customer" ? internalTeam : customerTeam;
   return <div className="page-stack"><PageHeader eyebrow="Klare Zuständigkeiten" title={currentUser.type === "customer" ? "Ihre Ansprechpartner" : `Kontakte bei ${company.shortName}`} lead="Nachrichten öffnen eine echte direkte Unterhaltung. Rückrufwünsche erscheinen beim zuständigen Mitarbeiter sofort und bleiben in seiner Rückrufzentrale sichtbar." /><section className="team-grid expanded-team">{people.map((person) => <article className="team-card" key={person.id}><div className="team-card-header"><div className="avatar xlarge">{person.initials}</div><span className={classNames("availability-label", person.type === "internal" ? (availabilityOptions[person.availabilityStatus || "available"]?.tone || "offline") : "contact")}><i />{person.type === "internal" ? (availabilityOptions[person.availabilityStatus || "available"]?.label || "Offline") : "Kundenkontakt"}</span></div><span className="team-role">{person.roleLabel}</span><h2>{person.name}</h2><p>{person.email}<br />{person.phone}</p><div className="team-actions"><button className="primary-button compact" onClick={() => onMessage(person.id)}><Icon name="message" size={18} /> Nachricht</button>{currentUser.type === "customer" ? <button className="secondary-button compact" onClick={() => onCallback(person.id)}><Icon name="phone" size={18} /> Rückruf wünschen</button> : <a className="secondary-button compact" href={telHref(person.phone)}><Icon name="phone" size={18} /> Direkt anrufen</a>}</div></article>)}</section>{currentUser.type === "internal" && <section className="panel contact-rights"><PanelHeader title="Kundenzugänge" subtitle="Sicht und Freigaberechte je Mitarbeiter" /><div className="people-list">{customerTeam.map((person) => <article key={person.id}><span className="avatar">{person.initials}</span><div><strong>{person.name}</strong><span>{person.roleLabel} · {person.phone}</span></div><div className="rights-summary"><span>{person.rights.viewAllProjects ? "Alle Projekte" : "Nur zugewiesene Projekte"}</span><span>{person.rights.approve ? "Freigabe erlaubt" : "Keine Freigabe"}</span></div></article>)}</div></section>}</div>;
 }
@@ -1670,8 +1776,9 @@ function TeamView({ company, users, currentUser, onMessage, onCallback }) {
 function CallbackRequestModal({ target, currentUser, onClose, onSubmit }) {
   const [subject, setSubject] = useState("");
   const [preferredTime, setPreferredTime] = useState("Möglichst bald");
-  const [contactMethod, setContactMethod] = useState("phone");
+  const hasPhone = Boolean(currentUser.phone?.trim());
   const teamsAccount = currentUser.teamsAccount || currentUser.email;
+  const [contactMethod, setContactMethod] = useState(hasPhone ? "phone" : "teams");
 
   return (
     <div className="modal-layer">
@@ -1683,9 +1790,9 @@ function CallbackRequestModal({ target, currentUser, onClose, onSubmit }) {
         </header>
 
         <div className="contact-method-grid">
-          <button className={contactMethod === "phone" ? "active" : ""} onClick={() => setContactMethod("phone")}>
+          <button disabled={!hasPhone} className={contactMethod === "phone" ? "active" : ""} onClick={() => setContactMethod("phone")}>
             <Icon name="phone" size={23} />
-            <span><strong>Telefonischer Rückruf</strong><small>{currentUser.phone}</small></span>
+            <span><strong>Telefonischer Rückruf</strong><small>{hasPhone ? currentUser.phone : "Keine Telefonnummer hinterlegt"}</small></span>
           </button>
           <button className={contactMethod === "teams" ? "active" : ""} onClick={() => setContactMethod("teams")}>
             <Icon name="users" size={23} />
@@ -1789,18 +1896,189 @@ function CallbacksView({ callbacks, users, companies, onComplete, onOpenCompany 
     </div>
   );
 }
-function CompanySettingsView({ company, users, currentUser, onUpdateCompany, onUpdateUser, onInvite }) {
+function CompanySettingsView({ company, users, currentUser, onUpdateCompany, onUpdateUser, onInvite, onDeleteUser }) {
   const [draft, setDraft] = useState({ name: company.name, primaryColor: company.primaryColor, accentColor: company.accentColor, logoData: company.logoData });
   const [inviteOpen, setInviteOpen] = useState(false);
   const [invite, setInvite] = useState({ name: "", email: "", phone: "", teamsAccount: "", roleLabel: "" });
-  const canManageUsers = currentUser.type === "internal" || currentUser.rights.manageUsers;
-  useEffect(() => setDraft({ name: company.name, primaryColor: company.primaryColor, accentColor: company.accentColor, logoData: company.logoData }), [company]);
-  function readLogo(file) { if (!file || file.size > 1000000) return; const reader = new FileReader(); reader.onload = () => setDraft((current) => ({ ...current, logoData: String(reader.result || "") })); reader.readAsDataURL(file); }
-  const rights = [["viewAllProjects", "Alle Firmenprojekte sehen"], ["approve", "Druckdaten freigeben"], ["viewFinancials", "Angebote und Rechnungen sehen"], ["createRequests", "Neue Projekte anfragen"], ["manageCompany", "Firmendarstellung verwalten"], ["manageUsers", "Benutzer und Rechte verwalten"]];
-  return <div className="page-stack"><PageHeader eyebrow="Mandant und Rollen" title="Firmeneinstellungen" lead={`Logo, Farbwelt, Telefonnummern, Teams-Konten und Zugriffsrechte werden für ${company.name} zentral gesteuert.`} /><section className="settings-grid"><div className="panel settings-panel"><div className="settings-heading"><div><h2>Darstellung der Firma</h2><p>Der Arbeitsraum übernimmt die Akzentfarben und das Logo des Kunden.</p></div><CompanyLogo company={{ ...company, ...draft }} /></div><div className="form-grid"><label className="form-field wide"><span>Firmenname</span><input value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} /></label><label className="form-field"><span>Hauptfarbe</span><div className="color-field"><input type="color" value={draft.primaryColor} onChange={(event) => setDraft((current) => ({ ...current, primaryColor: event.target.value }))} /><input value={draft.primaryColor} onChange={(event) => setDraft((current) => ({ ...current, primaryColor: event.target.value }))} /></div></label><label className="form-field"><span>Akzentfarbe</span><div className="color-field"><input type="color" value={draft.accentColor} onChange={(event) => setDraft((current) => ({ ...current, accentColor: event.target.value }))} /><input value={draft.accentColor} onChange={(event) => setDraft((current) => ({ ...current, accentColor: event.target.value }))} /></div></label><label className="form-field wide"><span>Kundenlogo</span><input type="file" accept="image/png,image/jpeg,image/svg+xml" onChange={(event) => readLogo(event.target.files?.[0])} /></label></div><div className="settings-actions"><button className="ghost-button" onClick={() => setDraft((current) => ({ ...current, logoData: "" }))}>Logo entfernen</button><button className="primary-button" onClick={() => onUpdateCompany(company.id, draft)}>Darstellung speichern</button></div></div><div className="panel branding-preview" style={{ "--preview-primary": draft.primaryColor, "--preview-accent": draft.accentColor }}><span className="eyebrow">Vorschau</span><div className="preview-header"><CompanyLogo company={{ ...company, ...draft }} /><div><small>Ihre externe Druckabteilung</small><strong>{draft.name}</strong></div></div><div className="preview-project"><span>DK-260XXX</span><h3>Ihr Projekt auf einen Blick</h3><p>Nächster Schritt, Ansprechpartner und Termin sind sofort sichtbar.</p><button>Projekt öffnen</button></div></div></section><section className="panel user-settings-panel"><div className="settings-heading"><div><h2>Benutzer, Telefonnummern und Rechte</h2><p>Telefonnummer und Teams-Konto stehen dem Kunden bei einer Gesprächsanfrage zur Auswahl.</p></div>{canManageUsers && <button className="secondary-button" onClick={() => setInviteOpen((value) => !value)}><Icon name="plus" size={18} /> Benutzer hinzufügen</button>}</div>{inviteOpen && <form className="invite-form" onSubmit={(event) => { event.preventDefault(); onInvite(company.id, invite); setInvite({ name: "", email: "", phone: "", teamsAccount: "", roleLabel: "" }); setInviteOpen(false); }}><label className="form-field"><span>Name</span><input required value={invite.name} onChange={(event) => setInvite((current) => ({ ...current, name: event.target.value }))} /></label><label className="form-field"><span>E-Mail</span><input required type="email" value={invite.email} onChange={(event) => setInvite((current) => ({ ...current, email: event.target.value }))} /></label><label className="form-field"><span>Telefon</span><input required value={invite.phone} onChange={(event) => setInvite((current) => ({ ...current, phone: event.target.value }))} /></label><label className="form-field"><span>Teams-Konto</span><input type="email" value={invite.teamsAccount} onChange={(event) => setInvite((current) => ({ ...current, teamsAccount: event.target.value }))} placeholder="meist die geschäftliche E-Mail" /></label><label className="form-field"><span>Funktion</span><input value={invite.roleLabel} onChange={(event) => setInvite((current) => ({ ...current, roleLabel: event.target.value }))} /></label><button className="primary-button" type="submit">Benutzer anlegen</button></form>}<div className="user-rights-list">{users.map((person) => <article key={person.id}><header><span className="avatar">{person.initials}</span><div><h3>{person.name}</h3><p>{person.roleLabel} · {person.email}</p></div><span className={classNames("access-label", person.rights.viewAllProjects && "full")}>{person.rights.viewAllProjects ? "Firmensicht" : "Eigene Projekte"}</span></header><div className="user-contact-row"><label className="form-field"><span>Telefonnummer für Rückrufe</span><input value={person.phone || ""} disabled={!canManageUsers} onChange={(event) => onUpdateUser(person.id, { phone: event.target.value })} /></label><label className="form-field"><span>Microsoft-Teams-Konto</span><input value={person.teamsAccount || person.email || ""} disabled={!canManageUsers} onChange={(event) => onUpdateUser(person.id, { teamsAccount: event.target.value })} /></label></div><div className="rights-grid">{rights.map(([key, label]) => <label key={key} className="right-toggle"><span><strong>{label}</strong></span><input type="checkbox" checked={Boolean(person.rights[key])} disabled={!canManageUsers || (person.id === currentUser.id && key === "manageUsers")} onChange={(event) => onUpdateUser(person.id, { rights: { [key]: event.target.checked } })} /><i /></label>)}</div></article>)}</div></section></div>;
+  const [logoMessage, setLogoMessage] = useState("");
+  const canManageUsers = currentUser.type === "internal" ? Boolean(currentUser.rights.manageCompanies) : Boolean(currentUser.rights.manageUsers);
+  const rights = [
+    ["viewAllProjects", "Alle Firmenprojekte sehen"],
+    ["approve", "Druckdaten freigeben"],
+    ["viewFinancials", "Angebote und Rechnungen sehen"],
+    ["createRequests", "Neue Projekte anfragen"],
+    ["manageCompany", "Firmendarstellung verwalten"],
+    ["manageUsers", "Benutzer und Rechte verwalten"]
+  ];
+
+  useEffect(() => {
+    setDraft({ name: company.name, primaryColor: company.primaryColor, accentColor: company.accentColor, logoData: company.logoData });
+    setLogoMessage("");
+  }, [company.id, company.name, company.primaryColor, company.accentColor, company.logoData]);
+
+  async function readLogo(file) {
+    if (!file) return;
+    setLogoMessage("Logo wird optimiert …");
+    try {
+      const logoData = await optimizeLogoFile(file);
+      setDraft((current) => ({ ...current, logoData }));
+      setLogoMessage(`„${file.name}“ wurde für das Portal optimiert. Bitte noch speichern.`);
+    } catch (error) {
+      setLogoMessage(error.message || "Das Logo konnte nicht verarbeitet werden.");
+    }
+  }
+
+  function submitInvite(event) {
+    event.preventDefault();
+    if (!onInvite(company.id, invite)) return;
+    setInvite({ name: "", email: "", phone: "", teamsAccount: "", roleLabel: "" });
+    setInviteOpen(false);
+  }
+
+  return (
+    <div className="page-stack">
+      <PageHeader eyebrow="Mandant und Rollen" title="Firmeneinstellungen" lead={`Logo, Farbwelt, Telefonnummern, Teams-Konten und Zugriffsrechte werden für ${company.name} zentral gesteuert.`} />
+
+      <section className="settings-grid">
+        <div className="panel settings-panel">
+          <div className="settings-heading">
+            <div><h2>Darstellung der Firma</h2><p>Firmenname und Logo werden nach dem Speichern auch im Firmenwechsel und in allen Übersichten aktualisiert.</p></div>
+            <CompanyLogo company={{ ...company, ...draft }} />
+          </div>
+          <div className="form-grid">
+            <label className="form-field wide">
+              <span>Firmenname</span>
+              <input value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} />
+            </label>
+            <label className="form-field">
+              <span>Hauptfarbe</span>
+              <div className="color-field"><input type="color" value={draft.primaryColor} onChange={(event) => setDraft((current) => ({ ...current, primaryColor: event.target.value }))} /><input value={draft.primaryColor} onChange={(event) => setDraft((current) => ({ ...current, primaryColor: event.target.value }))} /></div>
+            </label>
+            <label className="form-field">
+              <span>Akzentfarbe</span>
+              <div className="color-field"><input type="color" value={draft.accentColor} onChange={(event) => setDraft((current) => ({ ...current, accentColor: event.target.value }))} /><input value={draft.accentColor} onChange={(event) => setDraft((current) => ({ ...current, accentColor: event.target.value }))} /></div>
+            </label>
+            <label className="form-field wide">
+              <span>Kundenlogo</span>
+              <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" onChange={(event) => readLogo(event.target.files?.[0])} />
+              <small className="field-help">PNG, JPG, WebP oder SVG bis 5 MB; wird automatisch verkleinert.</small>
+              {logoMessage && <small className="field-feedback">{logoMessage}</small>}
+            </label>
+          </div>
+          <div className="settings-actions">
+            <button className="ghost-button" onClick={() => { setDraft((current) => ({ ...current, logoData: "" })); setLogoMessage("Logo wird beim Speichern entfernt."); }}>Logo entfernen</button>
+            <button className="primary-button" onClick={() => { onUpdateCompany(company.id, draft); setLogoMessage("Firmenangaben wurden gespeichert."); }}>Darstellung speichern</button>
+          </div>
+        </div>
+
+        <div className="panel branding-preview" style={{ "--preview-primary": draft.primaryColor, "--preview-accent": draft.accentColor }}>
+          <span className="eyebrow">Vorschau</span>
+          <div className="preview-header"><CompanyLogo company={{ ...company, ...draft }} /><div><small>Ihre externe Druckabteilung</small><strong>{draft.name}</strong></div></div>
+          <div className="preview-project"><span>DK-260XXX</span><h3>Ihr Projekt auf einen Blick</h3><p>Nächster Schritt, Ansprechpartner und Termin sind sofort sichtbar.</p><button>Projekt öffnen</button></div>
+        </div>
+      </section>
+
+      <section className="panel user-settings-panel">
+        <div className="settings-heading">
+          <div><h2>Benutzer, Kontaktdaten und Rechte</h2><p>Änderungen werden erst mit „Benutzer speichern“ übernommen. Benutzer können gelöscht werden, ohne den bisherigen Projektverlauf zu verlieren.</p></div>
+          {canManageUsers && <button className="secondary-button" onClick={() => setInviteOpen((value) => !value)}><Icon name="plus" size={18} /> Benutzer hinzufügen</button>}
+        </div>
+
+        {inviteOpen && (
+          <form className="invite-form" onSubmit={submitInvite}>
+            <label className="form-field"><span>Name</span><input required value={invite.name} onChange={(event) => setInvite((current) => ({ ...current, name: event.target.value }))} /></label>
+            <label className="form-field"><span>E-Mail</span><input required type="email" value={invite.email} onChange={(event) => setInvite((current) => ({ ...current, email: event.target.value }))} /></label>
+            <label className="form-field"><span>Telefon (optional)</span><input value={invite.phone} onChange={(event) => setInvite((current) => ({ ...current, phone: event.target.value }))} /></label>
+            <label className="form-field"><span>Teams-Konto</span><input type="email" value={invite.teamsAccount} onChange={(event) => setInvite((current) => ({ ...current, teamsAccount: event.target.value }))} placeholder="meist die geschäftliche E-Mail" /></label>
+            <label className="form-field"><span>Funktion</span><input value={invite.roleLabel} onChange={(event) => setInvite((current) => ({ ...current, roleLabel: event.target.value }))} /></label>
+            <button className="primary-button" type="submit">Benutzer anlegen</button>
+          </form>
+        )}
+
+        <div className="user-rights-list">
+          {users.map((person) => (
+            <UserSettingsCard
+              key={person.id}
+              person={person}
+              currentUser={currentUser}
+              canManageUsers={canManageUsers}
+              rights={rights}
+              onUpdateUser={onUpdateUser}
+              onDeleteUser={onDeleteUser}
+            />
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function UserSettingsCard({ person, currentUser, canManageUsers, rights, onUpdateUser, onDeleteUser }) {
+  const makeDraft = (user) => ({
+    name: user.name || "",
+    roleLabel: user.roleLabel || "",
+    email: user.email || "",
+    phone: user.phone || "",
+    teamsAccount: user.teamsAccount || user.email || "",
+    rights: { ...user.rights }
+  });
+  const [draft, setDraft] = useState(() => makeDraft(person));
+  const [error, setError] = useState("");
+
+  useEffect(() => { setDraft(makeDraft(person)); setError(""); }, [person]);
+
+  function updateField(key, value) { setDraft((current) => ({ ...current, [key]: value })); }
+  function updateRight(key, value) { setDraft((current) => ({ ...current, rights: { ...current.rights, [key]: value } })); }
+  function save() {
+    if (!draft.name.trim()) return setError("Bitte einen Namen eintragen.");
+    if (!draft.email.trim() || !draft.email.includes("@")) return setError("Bitte eine gültige E-Mail-Adresse eintragen.");
+    const saved = onUpdateUser(person.id, {
+      name: draft.name.trim(),
+      roleLabel: draft.roleLabel.trim() || "Mitarbeiter/in",
+      email: draft.email.trim(),
+      phone: draft.phone.trim(),
+      teamsAccount: draft.teamsAccount.trim() || draft.email.trim(),
+      rights: draft.rights
+    });
+    if (saved !== false) setError("");
+  }
+
+  return (
+    <article>
+      <header>
+        <span className="avatar">{person.initials}</span>
+        <div><h3>{person.name}</h3><p>{person.roleLabel} · {person.email}</p></div>
+        <div className="user-card-actions">
+          <span className={classNames("access-label", draft.rights.viewAllProjects && "full")}>{draft.rights.viewAllProjects ? "Firmensicht" : "Eigene Projekte"}</span>
+          {canManageUsers && <button type="button" className="delete-user-button" disabled={person.id === currentUser.id} onClick={() => onDeleteUser(person.id)} title={person.id === currentUser.id ? "Aktuell angemeldeten Benutzer nicht löschen" : `${person.name} löschen`}><Icon name="trash" size={18} /><span>Löschen</span></button>}
+        </div>
+      </header>
+
+      <div className="user-contact-row user-basic-row">
+        <label className="form-field"><span>Name</span><input value={draft.name} disabled={!canManageUsers} onChange={(event) => updateField("name", event.target.value)} /></label>
+        <label className="form-field"><span>Funktion</span><input value={draft.roleLabel} disabled={!canManageUsers} onChange={(event) => updateField("roleLabel", event.target.value)} /></label>
+        <label className="form-field"><span>E-Mail / Login</span><input type="email" value={draft.email} disabled={!canManageUsers} onChange={(event) => updateField("email", event.target.value)} /></label>
+      </div>
+      <div className="user-contact-row">
+        <label className="form-field"><span>Telefonnummer für Rückrufe</span><input value={draft.phone} disabled={!canManageUsers} onChange={(event) => updateField("phone", event.target.value)} /></label>
+        <label className="form-field"><span>Microsoft-Teams-Konto</span><input value={draft.teamsAccount} disabled={!canManageUsers} onChange={(event) => updateField("teamsAccount", event.target.value)} /></label>
+      </div>
+      <div className="rights-grid">
+        {rights.map(([key, label]) => (
+          <label key={key} className="right-toggle">
+            <span><strong>{label}</strong></span>
+            <input type="checkbox" checked={Boolean(draft.rights[key])} disabled={!canManageUsers || (person.id === currentUser.id && key === "manageUsers")} onChange={(event) => updateRight(key, event.target.checked)} />
+            <i />
+          </label>
+        ))}
+      </div>
+      {error && <p className="form-error user-save-error">{error}</p>}
+      {canManageUsers && <div className="user-save-row"><button type="button" className="secondary-button" onClick={() => { setDraft(makeDraft(person)); setError(""); }}>Änderungen verwerfen</button><button type="button" className="primary-button" onClick={save}>Benutzer speichern</button></div>}
+    </article>
+  );
 }
 
 function ProjectTable({ projects, onOpen }) { return <div className="project-table-wrap"><table className="project-table"><thead><tr><th>Projekt</th><th>Status</th><th>Fortschritt</th><th>Lieferung</th><th></th></tr></thead><tbody>{projects.map((project) => <tr key={project.id}><td><button className="table-project" onClick={() => onOpen(project.id)}><strong>{project.title}</strong><span>{project.id} · {project.category}</span></button></td><td><span className={classNames("status-badge", project.statusTone)}>{project.status}</span></td><td><div className="table-progress"><i><b style={{ width: `${project.progress}%` }} /></i><span>{project.progress}%</span></div></td><td>{project.delivery}</td><td><button className="table-open" onClick={() => onOpen(project.id)}>Öffnen <Icon name="arrow" size={16} /></button></td></tr>)}</tbody></table></div>; }
 function PageHeader({ eyebrow, title, lead }) { return <section className="page-header"><div><p className="eyebrow">{eyebrow}</p><h1>{title}</h1><p className="lead">{lead}</p></div></section>; }
-function PanelHeader({ title, subtitle, action, onAction }) { return <header className="panel-header"><div><h2>{title}</h2>{subtitle && <p>{subtitle}</p>}</div>{action && <button onClick={onAction}>{action}<Icon name="arrow" size={17} /></button>}</header>; }
+function PanelHeader({ title, subtitle, action = null, onAction = null }) { return <header className="panel-header"><div><h2>{title}</h2>{subtitle && <p>{subtitle}</p>}</div>{action && <button onClick={onAction}>{action}<Icon name="arrow" size={17} /></button>}</header>; }
 function EmptyState({ title, text }) { return <div className="empty-state"><span><Icon name="check" /></span><strong>{title}</strong><p>{text}</p></div>; }

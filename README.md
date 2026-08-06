@@ -1,24 +1,28 @@
-# druckkultur desk – Vorführversion 2.3
+# druckkultur desk – Vorführversion 2.4
 
 
-## Webflow-Build-Fix in Version 2.3
+## Webflow-Kompatibilität
 
-Die API-Route `app/api/analyze-order/route.js` verwendet jetzt die Node.js Runtime statt der Edge Runtime. Dadurch kann Webflow Cloud die PDF-Auswertung mit OpenNext korrekt bündeln.
+Die PDF-API verwendet weiterhin die in Version 2.3 korrigierte Node.js Runtime, damit Webflow Cloud die Anwendung mit OpenNext bündeln kann.
 
 Next.js-Webapp für einen persönlichen digitalen Projektraum zwischen druckkultur und ihren Kunden. Die Anwendung ist bewusst kein Online-Shop. Sie verbindet persönliche Beratung, Projekte, Nachrichten, Dokumente, Freigaben und Gesprächswünsche in einem gemeinsamen Arbeitsraum.
 
-## Änderungen in Version 2.3
+## Änderungen in Version 2.4
 
-- Neue Kundenprojekte erhalten pro Benutzer einen eigenen Ungelesen-Status.
-- Projektzähler erscheinen am Menüpunkt **Projekte**, bei jeder Firma und in der Firmenübersicht.
-- Der Zähler verschwindet erst, wenn der jeweilige Benutzer das Projekt öffnet.
-- Die Versionsnummer steht unten links in der Sidebar.
-- Projektstatus sind auf acht verständliche Kundenstatus reduziert.
-- Der Projektverlauf zeigt nur Anfrage, Angebot, Druckdaten, Freigabe, Produktion und Lieferung.
-- Arbeitsschritte können weiterhin einzeln als erledigt markiert oder wieder geöffnet werden.
-- druckkultur-Mitarbeiter wählen ihren Status in der Sidebar: Online / verfügbar, Beschäftigt, Im Termin, Außer Haus, Nicht stören oder Offline.
-- Bestell-PDF-Auswertung und Dokumentarten aus Version 2.1 bleiben enthalten.
-- Vertrauliche Testbestellungen sind nicht im Repository und nicht in den Demodaten enthalten.
+- Umbenannte Firmen erscheinen sofort mit dem neuen Namen im Firmenwechsel, in Übersichten, Login-Auswahl und Kopfbereich.
+- Kurzname und Initialen werden aus dem neuen Firmennamen automatisch aktualisiert.
+- Kundenlogos werden vor dem Speichern automatisch optimiert und anschließend in allen Firmenansichten aktualisiert.
+- Zu große oder ungültige Logodateien erzeugen eine verständliche Fehlermeldung statt stillschweigend ignoriert zu werden.
+- Firmenbenutzer können mit Sicherheitsabfrage gelöscht werden.
+- Projekte eines gelöschten Benutzers werden automatisch einem verbleibenden Firmenbenutzer zugeordnet.
+- Der letzte Firmenbenutzer, der aktuell angemeldete Benutzer und – für Kundenadministratoren – der letzte Benutzerverwalter sind gegen versehentliches Löschen geschützt.
+- Benutzerdaten und Rechte werden in einer lokalen Bearbeitungsansicht geändert und erst über **Benutzer speichern** übernommen.
+- Doppelte Login-E-Mail-Adressen werden verhindert.
+- Kunden- und Mitarbeiterlogin sind technisch getrennt; im falschen Loginbereich kann kein Konto des anderen Typs mehr verwendet werden.
+- Nur interne Mitarbeiter mit dem Recht `manageCompanies` sehen und bearbeiten Firmeneinstellungen.
+- Interne Mitarbeiter werden beim Login als verfügbar und beim Abmelden als offline markiert.
+- **Vorführung zurücksetzen** löscht jetzt zusätzlich die in IndexedDB gespeicherten Uploads.
+- Die Webflow-kompatible Node.js-Runtime der PDF-API aus Version 2.3 bleibt erhalten.
 
 ## Demo-Zugänge
 
