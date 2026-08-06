@@ -1,6 +1,6 @@
 import { initOpenNextCloudflareForDev } from "@opennextjs/cloudflare";
 
-const rawMountPath = process.env.WEBFLOW_CLOUD_MOUNT_PATH || "";
+const rawMountPath = process.env.BASE_URL || process.env.WEBFLOW_CLOUD_MOUNT_PATH || "";
 const mountPath = rawMountPath && rawMountPath !== "/"
   ? `/${rawMountPath.replace(/^\/+|\/+$/g, "")}`
   : "";

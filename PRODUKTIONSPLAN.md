@@ -1,6 +1,6 @@
-# Produktionsplan – druckkultur desk ab Version 2.5
+# Produktionsplan – druckkultur desk ab Version 2.6
 
-Version 2.5 schafft einen realen gemeinsamen Daten- und Dateispeicher in Webflow Cloud. Sie ist damit für Mehrgeräte-Tests geeignet. Für den Einsatz mit echten Kunden sind die folgenden Schritte erforderlich.
+Version 2.6 schafft einen realen gemeinsamen Daten- und Dateispeicher in Webflow Cloud. Sie ist damit für Mehrgeräte-Tests geeignet. Für den Einsatz mit echten Kunden sind die folgenden Schritte erforderlich.
 
 ## 1. Serverseitige Anmeldung
 
@@ -58,7 +58,7 @@ Webflow Object Storage ist bereits angebunden. Produktiv zusätzlich:
 
 ## 5. Projektänderungen
 
-Version 2.5 protokolliert Änderungen bereits sichtbar im Projekt. Produktiv sollte das Audit-Log unveränderbar speichern:
+Version 2.6 protokolliert Änderungen bereits sichtbar im Projekt. Produktiv sollte das Audit-Log unveränderbar speichern:
 
 - Benutzer-ID
 - Zeitpunkt

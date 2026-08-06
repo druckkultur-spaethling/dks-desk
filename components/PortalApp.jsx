@@ -11,8 +11,8 @@ import {
   initialUsers
 } from "@/data/mock-data";
 
-const APP_VERSION = "2.5";
-const SESSION_KEY = "druckkultur-desk-session-v2.5";
+const APP_VERSION = "2.6";
+const SESSION_KEY = "druckkultur-desk-session-v2.6";
 const API_BASE = process.env.NEXT_PUBLIC_BASE_PATH || "";
 
 const baseNav = [
@@ -270,6 +270,7 @@ export default function PortalApp() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [syncStatus, setSyncStatus] = useState("loading");
+  const [syncError, setSyncError] = useState("");
   const [lastSyncedAt, setLastSyncedAt] = useState("");
   const [messageTargetUserId, setMessageTargetUserId] = useState(null);
   const [callbackTargetUserId, setCallbackTargetUserId] = useState(null);
@@ -293,16 +294,56 @@ export default function PortalApp() {
     setCallbacks(normalized.callbacks);
     setLastSyncedAt(payload.updatedAt || new Date().toISOString());
     setSyncStatus("online");
+    setSyncError("");
     if (announce) setNotice("Neue Änderungen von einem anderen Gerät wurden geladen.");
   }
 
-  async function loadSharedState(announce = false) {
-    const response = await fetch(`${API_BASE}/api/state`, { cache: "no-store" });
-    const payload = await response.json();
-    if (!response.ok) throw new Error(payload.error || "Gemeinsame Daten konnten nicht geladen werden.");
-    if (Number(payload.revision || 0) > revisionRef.current || !lastSerializedRef.current) applyRemoteState(payload, announce);
-    else { setSyncStatus("online"); setLastSyncedAt(payload.updatedAt || lastSyncedAt); }
+  function stateApiUrl() {
+    const separator = `${API_BASE}/api/state`.includes("?") ? "&" : "?";
+    return `${API_BASE}/api/state${separator}_=${Date.now()}`;
+  }
+
+  async function readJsonResponse(response) {
+    const text = await response.text();
+    let payload = {};
+    try { payload = text ? JSON.parse(text) : {}; }
+    catch { throw new Error(`Die Portal-API antwortet nicht korrekt (${response.status}). Prüfen Sie Mount-Pfad und Webflow-Deployment.`); }
+    if (!response.ok) throw new Error(payload.error || `Portal-API nicht erreichbar (${response.status}).`);
     return payload;
+  }
+
+  async function diagnoseConnection(fallbackMessage = "Gemeinsame Datenbank nicht erreichbar.") {
+    try {
+      const response = await fetch(`${API_BASE}/api/health?_=${Date.now()}`, { cache: "no-store", headers: { "Accept": "application/json" } });
+      const text = await response.text();
+      let payload = {};
+      try { payload = text ? JSON.parse(text) : {}; } catch { return fallbackMessage; }
+      return payload.error || fallbackMessage;
+    } catch {
+      return fallbackMessage;
+    }
+  }
+
+  async function loadSharedState(announce = false) {
+    const response = await fetch(stateApiUrl(), { cache: "no-store", headers: { "Accept": "application/json" } });
+    const payload = await readJsonResponse(response);
+    if (Number(payload.revision || 0) > revisionRef.current || !lastSerializedRef.current) applyRemoteState(payload, announce);
+    else { setSyncStatus("online"); setSyncError(""); setLastSyncedAt(payload.updatedAt || lastSyncedAt); }
+    return payload;
+  }
+
+  async function retrySync() {
+    setSyncStatus("loading");
+    try {
+      await loadSharedState(false);
+      setNotice("Verbindung zur gemeinsamen Datenbank wiederhergestellt.");
+    } catch (error) {
+      console.error("Erneute Verbindung fehlgeschlagen.", error);
+      const detail = await diagnoseConnection(error.message || "Gemeinsame Datenbank nicht erreichbar.");
+      setSyncStatus("error");
+      setSyncError(detail);
+      setNotice(detail);
+    }
   }
 
   useEffect(() => {
@@ -315,17 +356,18 @@ export default function PortalApp() {
           if (typeof parsed.currentUserId === "string") setCurrentUserId(parsed.currentUserId);
           if (typeof parsed.selectedCompanyId === "string") setSelectedCompanyId(parsed.selectedCompanyId);
         }
-        const response = await fetch(`${API_BASE}/api/state`, { cache: "no-store" });
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload.error || "Gemeinsame Daten konnten nicht geladen werden.");
+        const response = await fetch(stateApiUrl(), { cache: "no-store", headers: { "Accept": "application/json" } });
+        const payload = await readJsonResponse(response);
         if (!cancelled) applyRemoteState(payload);
       } catch (error) {
         console.error("Gemeinsamer Datenstand konnte nicht geladen werden.", error);
         if (!cancelled) {
           const fallback = normalizeSharedState();
           lastSerializedRef.current = serializeSharedState(fallback);
+          const detail = await diagnoseConnection(error.message || "Die gemeinsame Webflow-Datenbank ist nicht erreichbar.");
           setSyncStatus("error");
-          setNotice("Die gemeinsame Webflow-Datenbank ist nicht erreichbar. Änderungen werden derzeit nicht dauerhaft gespeichert.");
+          setSyncError(detail);
+          setNotice(`${detail} Änderungen werden derzeit nicht geräteübergreifend gespeichert.`);
         }
       } finally {
         if (!cancelled) setHydrated(true);
@@ -360,7 +402,10 @@ export default function PortalApp() {
             event: lastEventRef.current
           })
         });
-        const payload = await response.json();
+        const responseText = await response.text();
+        let payload = {};
+        try { payload = responseText ? JSON.parse(responseText) : {}; }
+        catch { throw new Error(`Die Portal-API antwortet beim Speichern nicht korrekt (${response.status}). Prüfen Sie Mount-Pfad und Deployment.`); }
         if (response.status === 409 && payload.state) {
           applyRemoteState(payload);
           setNotice("Ein anderer Benutzer hat gleichzeitig Änderungen gespeichert. Der neueste gemeinsame Stand wurde geladen; bitte Ihre Änderung erneut prüfen.");
@@ -371,10 +416,12 @@ export default function PortalApp() {
         lastSerializedRef.current = serialized;
         setLastSyncedAt(payload.updatedAt || new Date().toISOString());
         setSyncStatus("online");
+        setSyncError("");
         lastEventRef.current = "Daten aktualisiert";
       } catch (error) {
         console.error("Gemeinsames Speichern fehlgeschlagen.", error);
         setSyncStatus("error");
+        setSyncError(error.message || "Änderungen konnten nicht gemeinsam gespeichert werden.");
         setNotice(error.message || "Änderungen konnten nicht gemeinsam gespeichert werden.");
       } finally {
         savingRef.current = false;
@@ -387,9 +434,25 @@ export default function PortalApp() {
     if (!hydrated) return undefined;
     const timer = window.setInterval(async () => {
       if (savingRef.current || saveTimerRef.current) return;
-      try { await loadSharedState(true); } catch (error) { console.warn("Live-Aktualisierung vorübergehend nicht erreichbar.", error); setSyncStatus("error"); }
-    }, 5000);
+      try { await loadSharedState(true); }
+      catch (error) {
+        console.warn("Live-Aktualisierung vorübergehend nicht erreichbar.", error);
+        setSyncStatus("error");
+        setSyncError(error.message || "Live-Aktualisierung nicht erreichbar.");
+      }
+    }, 2000);
     return () => window.clearInterval(timer);
+  }, [hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) return undefined;
+    const reconnect = () => { if (document.visibilityState === "visible" || navigator.onLine) retrySync(); };
+    window.addEventListener("online", reconnect);
+    document.addEventListener("visibilitychange", reconnect);
+    return () => {
+      window.removeEventListener("online", reconnect);
+      document.removeEventListener("visibilitychange", reconnect);
+    };
   }, [hydrated]);
 
   useEffect(() => {
@@ -479,8 +542,20 @@ export default function PortalApp() {
     }
     setCurrentUserId(null); setSelectedCompanyId(null); setSelectedProjectId(null); setActiveView("dashboard"); setSearchTerm(""); setMessageTargetUserId(null);
   }
-  function navigate(view) { setActiveView(view); if (view !== "project") setSelectedProjectId(null); setMobileMenuOpen(false); window.requestAnimationFrame(() => document.getElementById("main-content")?.focus()); }
-  function switchCompany(companyId) { setSelectedCompanyId(companyId); setSelectedProjectId(null); setSearchTerm(""); setActiveView("dashboard"); setMobileMenuOpen(false); }
+  function navigate(view) {
+    if (view === "companies" && currentUser?.type === "internal") setSelectedCompanyId(null);
+    setActiveView(view);
+    if (view !== "project") setSelectedProjectId(null);
+    setMobileMenuOpen(false);
+    window.requestAnimationFrame(() => document.getElementById("main-content")?.focus());
+  }
+  function switchCompany(companyId) {
+    setSelectedCompanyId(companyId || null);
+    setSelectedProjectId(null);
+    setSearchTerm("");
+    setActiveView(companyId ? "dashboard" : "companies");
+    setMobileMenuOpen(false);
+  }
   function openProject(projectId) {
     if (currentUser) {
       setProjects((current) => current.map((project) => project.id === projectId && !(project.seenBy || []).includes(currentUser.id)
@@ -498,16 +573,26 @@ export default function PortalApp() {
     setMessages((current) => current.map((message) => threadIdForMessage(message) === threadId && message.senderUserId !== currentUser.id && !(message.readBy || []).includes(currentUser.id) ? { ...message, readBy: [...(message.readBy || []), currentUser.id] } : message));
   }
   function addProjectMessage(projectId, text) {
+    if (syncStatus === "error") {
+      setNotice("Nachricht nicht gesendet: Die gemeinsame Datenbank ist nicht verbunden. Klicken Sie oben auf „Verbindung prüfen“.");
+      return;
+    }
     const clean = text.trim();
     const project = projects.find((item) => item.id === projectId);
     if (!clean || !currentUser || !project || !canSeeProject(currentUser, project)) return;
+    lastEventRef.current = `${currentUser.name} hat eine Projektnachricht gesendet`;
     setMessages((current) => [...current, { id: `msg-${Date.now()}`, companyId: project.companyId, projectId, senderUserId: currentUser.id, text: clean, time: "Gerade eben", createdAt: new Date().toISOString(), readBy: [currentUser.id] }]);
     setNotice(currentUser.type === "customer" ? "Nachricht an das zuständige druckkultur-Team gesendet." : "Nachricht an den Kunden gesendet.");
   }
   function addDirectMessage(recipientId, text) {
+    if (syncStatus === "error") {
+      setNotice("Nachricht nicht gesendet: Die gemeinsame Datenbank ist nicht verbunden. Klicken Sie oben auf „Verbindung prüfen“.");
+      return;
+    }
     const clean = text.trim();
     if (!clean || !currentUser || !currentCompany) return;
     const threadId = directThreadId(currentCompany.id, currentUser.id, recipientId);
+    lastEventRef.current = `${currentUser.name} hat eine direkte Nachricht gesendet`;
     setMessages((current) => [...current, { id: `direct-${Date.now()}`, companyId: currentCompany.id, projectId: null, threadType: "direct", threadId, participantUserIds: [currentUser.id, recipientId], senderUserId: currentUser.id, text: clean, time: "Gerade eben", createdAt: new Date().toISOString(), readBy: [currentUser.id] }]);
     setNotice("Direkte Nachricht gesendet.");
   }
@@ -903,10 +988,11 @@ export default function PortalApp() {
   return (
     <div className="portal-root" style={companyStyle}>
       <a className="skip-link" href="#main-content">Zum Hauptinhalt</a>
-      <Sidebar navItems={navItems} activeView={activeView} currentUser={currentUser} currentCompany={currentCompany} companies={accessibleCompanies} unreadByCompany={unreadByCompany} newProjectsByCompany={newProjectsByCompany} callbackByCompany={pendingCallbacksByCompany} mobileOpen={mobileMenuOpen} onNavigate={navigate} onSwitchCompany={switchCompany} onClose={() => setMobileMenuOpen(false)} onLogout={logout} onReset={resetDemo} onAvailabilityChange={updateAvailability} syncStatus={syncStatus} lastSyncedAt={lastSyncedAt} />
+      <Sidebar navItems={navItems} activeView={activeView} currentUser={currentUser} currentCompany={currentCompany} companies={accessibleCompanies} unreadByCompany={unreadByCompany} newProjectsByCompany={newProjectsByCompany} callbackByCompany={pendingCallbacksByCompany} mobileOpen={mobileMenuOpen} onNavigate={navigate} onSwitchCompany={switchCompany} onClose={() => setMobileMenuOpen(false)} onLogout={logout} onReset={resetDemo} onAvailabilityChange={updateAvailability} syncStatus={syncStatus} syncError={syncError} lastSyncedAt={lastSyncedAt} onRetrySync={retrySync} />
       <div className="app-column">
-        <Topbar currentUser={currentUser} currentCompany={currentCompany} searchTerm={searchTerm} unreadCount={unreadByCompany[currentCompany?.id] || 0} callbackCount={pendingCallbacksForUser.length} onSearch={setSearchTerm} onMenu={() => setMobileMenuOpen(true)} onMessages={() => navigate("messages")} onCallbacks={() => navigate("callbacks")} onLogout={logout} syncStatus={syncStatus} />
+        <Topbar currentUser={currentUser} currentCompany={currentCompany} searchTerm={searchTerm} unreadCount={unreadByCompany[currentCompany?.id] || 0} callbackCount={pendingCallbacksForUser.length} onSearch={setSearchTerm} onMenu={() => setMobileMenuOpen(true)} onMessages={() => navigate("messages")} onCallbacks={() => navigate("callbacks")} onLogout={logout} syncStatus={syncStatus} syncError={syncError} onRetrySync={retrySync} />
         <main id="main-content" tabIndex="-1" className="main-content">
+          {syncStatus === "error" && <section className="connection-warning" role="alert"><Icon name="shield" size={22} /><div><strong>Keine Verbindung zur gemeinsamen Datenbank</strong><span>{syncError || "Änderungen können derzeit nicht zwischen mehreren Geräten synchronisiert werden."}</span></div><button type="button" onClick={retrySync}>Verbindung prüfen</button></section>}
           {activeView === "companies" && currentUser.type === "internal" && <CompaniesView companies={accessibleCompanies} projects={projects} unreadByCompany={unreadByCompany} newProjectsByCompany={newProjectsByCompany} callbackByCompany={pendingCallbacksByCompany} users={users} onOpen={switchCompany} />}
           {activeView === "dashboard" && currentCompany && <DashboardView currentUser={currentUser} company={currentCompany} projects={visibleProjects} messages={visibleMessages} callbacks={callbacks} users={users} unreadByCompany={unreadByCompany} newProjectsByCompany={newProjectsByCompany} callbackByCompany={pendingCallbacksByCompany} companies={accessibleCompanies} onOpenProject={openProject} onNavigate={navigate} onApprove={approveProject} onSwitchCompany={switchCompany} />}
           {activeView === "projects" && currentCompany && <ProjectsView projects={visibleProjects} users={users} currentUser={currentUser} searchTerm={searchTerm} onSearch={setSearchTerm} onOpenProject={openProject} onCreateProject={() => navigate("request")} />}
@@ -938,7 +1024,7 @@ function LoginScreen({ users, companies, onLogin }) {
   return <main className="login-page"><section className="login-brand"><div className="login-logo"><Icon name="print" size={40} /><span><strong>druckkultur</strong><small>desk</small></span></div><p className="eyebrow">Ihre externe Druckabteilung</p><h1>Direkter Kontakt. Alle Printprojekte an einem Ort.</h1><p>Beratung, Nachrichten, Dateien, Freigaben, Rückrufe und Projektsteuerung in einem gemeinsamen Arbeitsraum.</p><div className="login-features"><span><Icon name="users" size={22} /> Persönliche Ansprechpartner</span><span><Icon name="fileCheck" size={22} /> Zentrale Dokumentablage für alle Geräte</span><span><Icon name="phone" size={22} /> Sichtbare Rückrufwünsche</span></div></section><section className="login-panel"><div className="login-card"><div className="login-tabs"><button className={mode === "customer" ? "active" : ""} onClick={() => { setMode("customer"); setError(""); }}>Kundenlogin</button><button className={mode === "internal" ? "active" : ""} onClick={() => { setMode("internal"); setError(""); }}>Mitarbeiterlogin</button></div><div className="login-heading"><span className="eyebrow">Vorführmodus</span><h2>{mode === "customer" ? "Als Kunde anmelden" : "Als druckkultur-Mitarbeiter anmelden"}</h2></div><form onSubmit={submit}><label className="form-field"><span>E-Mail-Adresse</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label><label className="form-field"><span>Passwort</span><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>{error && <p className="form-error">{error}</p>}<button className="primary-button wide-button" type="submit">Anmelden <Icon name="arrow" size={19} /></button></form><div className="demo-accounts"><strong>Zugang auswählen</strong><p>Passwort ist bei allen Konten <code>demo</code>.</p><div className="demo-account-list">{candidates.map((user) => { const company = getCompany(companies, user.companyId); return <button key={user.id} onClick={() => { setEmail(user.email); setPassword("demo"); }}><span className="avatar">{user.initials}</span><span><strong>{user.name}</strong><small>{company ? `${company.shortName} · ` : ""}{user.roleLabel}</small></span></button>; })}</div></div><p className="demo-note"><Icon name="shield" size={17} />Firmen, Projekte, Nachrichten und Dokumente werden gemeinsam in Webflow Cloud gespeichert und auf mehreren Geräten automatisch synchronisiert.</p></div></section></main>;
 }
 
-function Sidebar({ navItems, activeView, currentUser, currentCompany, companies, unreadByCompany, newProjectsByCompany, callbackByCompany, mobileOpen, onNavigate, onSwitchCompany, onClose, onLogout, onReset, onAvailabilityChange, syncStatus, lastSyncedAt }) {
+function Sidebar({ navItems, activeView, currentUser, currentCompany, companies, unreadByCompany, newProjectsByCompany, callbackByCompany, mobileOpen, onNavigate, onSwitchCompany, onClose, onLogout, onReset, onAvailabilityChange, syncStatus, syncError, lastSyncedAt, onRetrySync }) {
   const availability = availabilityOptions[currentUser.availabilityStatus || "available"];
   const syncLabel = syncStatus === "saving" ? "Wird gespeichert …" : syncStatus === "error" ? "Verbindung unterbrochen" : syncStatus === "loading" ? "Daten werden geladen …" : "Gemeinsam gespeichert";
   const syncTime = lastSyncedAt ? new Date(lastSyncedAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }) : "";
@@ -952,7 +1038,10 @@ function Sidebar({ navItems, activeView, currentUser, currentCompany, companies,
       </div>
       {currentUser.type === "internal" && <div className="company-switcher">
         <div className="sidebar-label"><span>Firmen wechseln</span></div>
-        <div className="company-switch-list">{companies.map((company) => <button key={`${company.id}-${company.logoUpdatedAt || company.name}`} className={company.id === currentCompany?.id ? "active" : ""} onClick={() => onSwitchCompany(company.id)}>
+        <div className="company-switch-list"><button className={!currentCompany ? "active all-companies-button" : "all-companies-button"} onClick={() => onSwitchCompany(null)}>
+          <span className="company-logo compact"><Icon name="layers" size={18} /></span>
+          <span><strong>Alle Firmen</strong><small>Zur Gesamtübersicht</small></span>
+        </button>{companies.map((company) => <button key={`${company.id}-${company.logoUpdatedAt || company.name}`} className={company.id === currentCompany?.id ? "active" : ""} onClick={() => onSwitchCompany(company.id)}>
           <CompanyLogo company={company} compact />
           <span><strong>{company.name}</strong><small>{company.customerNumber}</small></span>
           <span className="company-alerts">{(newProjectsByCompany[company.id] || 0) > 0 && <b className="project-badge" title="Neue Projekte"><Icon name="projects" size={12} />{newProjectsByCompany[company.id]}</b>}{(unreadByCompany[company.id] || 0) > 0 && <b className="count-badge" title="Ungelesene Nachrichten">{unreadByCompany[company.id]}</b>}{(callbackByCompany[company.id] || 0) > 0 && <b className="phone-badge" title="Offene Rückrufe"><Icon name="phone" size={12} />{callbackByCompany[company.id]}</b>}</span>
@@ -967,7 +1056,7 @@ function Sidebar({ navItems, activeView, currentUser, currentCompany, companies,
       <div className="sidebar-footer">
         <div className="signed-in-user"><span className="avatar">{currentUser.initials}</span><span><strong>{currentUser.name}</strong><small>{currentUser.roleLabel}</small></span></div>
         {currentUser.type === "internal" && <label className={classNames("availability-select", availability.tone)}><span><i />Eigener Status</span><select value={currentUser.availabilityStatus || "available"} onChange={(event) => onAvailabilityChange(event.target.value)}>{Object.entries(availabilityOptions).map(([value, option]) => <option value={value} key={value}>{option.label}</option>)}</select><small>{availability.description}</small></label>}
-        <div className={classNames("sync-status", syncStatus)}><i /><span><strong>{syncLabel}</strong>{syncTime && <small>Stand {syncTime} Uhr</small>}</span></div>
+        <button type="button" className={classNames("sync-status", syncStatus)} onClick={onRetrySync} title={syncError || "Verbindung zur gemeinsamen Datenbank prüfen"}><i /><span><strong>{syncLabel}</strong>{syncStatus === "error" && syncError ? <small>{syncError}</small> : syncTime && <small>Stand {syncTime} Uhr</small>}</span></button>
         <div className="sidebar-version">Version {APP_VERSION}</div>
         <div className="sidebar-footer-actions"><button onClick={onLogout}>Abmelden</button>{currentUser.type === "internal" && currentUser.rights.manageCompanies && <button onClick={onReset}>Gemeinsame Demo zurücksetzen</button>}</div>
       </div>
@@ -975,13 +1064,13 @@ function Sidebar({ navItems, activeView, currentUser, currentCompany, companies,
   </>;
 }
 
-function Topbar({ currentUser, currentCompany, searchTerm, unreadCount, callbackCount, onSearch, onMenu, onMessages, onCallbacks, onLogout, syncStatus }) {
+function Topbar({ currentUser, currentCompany, searchTerm, unreadCount, callbackCount, onSearch, onMenu, onMessages, onCallbacks, onLogout, syncStatus, syncError, onRetrySync }) {
   return <header className="topbar">
     <button className="icon-button mobile-menu" onClick={onMenu}><Icon name="menu" /></button>
     <div className="topbar-context"><span>{currentCompany?.shortName || "Firmenübersicht"}</span><strong>{formatToday()}</strong></div>
     <label className={classNames("global-search", !currentCompany && "disabled")}><Icon name="search" size={21} /><input disabled={!currentCompany} value={searchTerm} onChange={(event) => onSearch(event.target.value)} placeholder={currentCompany ? "Projekt, Auftrag oder Status suchen …" : "Zuerst eine Firma auswählen"} /></label>
     <div className="topbar-actions">
-      <span className={classNames("topbar-sync", syncStatus)}>{syncStatus === "saving" ? "Speichert …" : syncStatus === "error" ? "Offline" : "Live"}</span>
+      <button type="button" className={classNames("topbar-sync", syncStatus)} onClick={onRetrySync} title={syncError || "Live-Verbindung prüfen"}>{syncStatus === "saving" ? "Speichert …" : syncStatus === "error" ? "Verbindung prüfen" : "Live"}</button>
       {currentUser.type === "internal" && <button className="notification-button callback-topbar" onClick={onCallbacks} aria-label={`${callbackCount} offene Rückrufe`}><Icon name="phone" size={22} />{callbackCount > 0 && <b>{callbackCount}</b>}</button>}
       <button className="notification-button" disabled={!currentCompany} onClick={onMessages}><Icon name="bell" size={22} />{unreadCount > 0 && <b>{unreadCount}</b>}</button>
       <div className="topbar-user"><span className="avatar">{currentUser.initials}</span><span><strong>{currentUser.firstName}</strong><small>{currentUser.type === "internal" ? "druckkultur" : currentUser.roleLabel}</small></span><button onClick={onLogout}><Icon name="external" size={17} /></button></div>

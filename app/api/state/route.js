@@ -19,7 +19,11 @@ function json(data, status = 200) {
 
 function getDb() {
   const { env } = getCloudflareContext();
-  if (!env.DB) throw new Error("Die Webflow-Cloud-Datenbank DB ist nicht verbunden.");
+  if (!env?.DB) {
+    const error = new Error("Die Webflow-Cloud-SQLite-Bindung DB ist nicht verbunden. Prüfen Sie in Webflow Cloud unter Environment → Storage, ob DB angelegt wurde, und deployen Sie danach erneut.");
+    error.code = "DB_BINDING_MISSING";
+    throw error;
+  }
   return env.DB;
 }
 
@@ -75,7 +79,7 @@ export async function GET() {
     });
   } catch (error) {
     console.error("Shared state GET failed", error);
-    return json({ error: error.message || "Gemeinsame Daten konnten nicht geladen werden." }, 500);
+    return json({ error: error.message || "Gemeinsame Daten konnten nicht geladen werden.", code: error.code || "STATE_READ_FAILED" }, 500);
   }
 }
 
@@ -126,7 +130,7 @@ export async function PUT(request) {
     return json({ revision: nextRevision, updatedAt: now, storage: "webflow-sqlite" });
   } catch (error) {
     console.error("Shared state PUT failed", error);
-    return json({ error: error.message || "Gemeinsame Daten konnten nicht gespeichert werden." }, 500);
+    return json({ error: error.message || "Gemeinsame Daten konnten nicht gespeichert werden.", code: error.code || "STATE_WRITE_FAILED" }, 500);
   }
 }
 
@@ -148,6 +152,6 @@ export async function DELETE() {
     return json({ state: seed, revision: nextRevision, updatedAt: now });
   } catch (error) {
     console.error("Shared state reset failed", error);
-    return json({ error: error.message || "Gemeinsame Demo konnte nicht zurückgesetzt werden." }, 500);
+    return json({ error: error.message || "Gemeinsame Demo konnte nicht zurückgesetzt werden.", code: error.code || "STATE_RESET_FAILED" }, 500);
   }
 }
