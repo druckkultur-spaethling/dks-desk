@@ -933,7 +933,7 @@ body { font-size: 17px; }
 }
 
 
-/* Version 2.1: manuell abschließbarer Projektverlauf */
+/* Version 2.2: kompakter, manuell abschließbarer Projektverlauf */
 .workflow-editor { display: grid; gap: 13px; padding: 16px; border: 1px solid var(--border); border-radius: 14px; background: rgba(255,255,255,.018); }
 .workflow-editor-heading { display: flex; align-items: center; justify-content: space-between; gap: 15px; }
 .workflow-editor-heading > div { display: grid; }
@@ -956,3 +956,87 @@ body { font-size: 17px; }
 }
 
 .preserve-lines { white-space: pre-line; }
+
+/* Version 2.2 – neue Projekte, Versionsanzeige und Mitarbeiterstatus */
+.project-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 28px;
+  min-height: 27px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: #d6a64a;
+  color: #171106;
+  font-size: .74rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+.project-new-pill,
+.project-new-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: rgba(214, 166, 74, .16);
+  color: #f2c76f;
+  font-size: .76rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+.project-card-statuses { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
+.sidebar-version {
+  padding: 8px 8px 2px;
+  color: var(--muted);
+  font-size: .76rem;
+  font-weight: 750;
+  letter-spacing: .04em;
+}
+.availability-select {
+  display: grid;
+  gap: 6px;
+  margin: 2px 8px 10px;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: rgba(255,255,255,.025);
+}
+.availability-select > span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-soft);
+  font-size: .78rem;
+  font-weight: 800;
+}
+.availability-select i,
+.availability-label i { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.availability-select select {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: .86rem;
+}
+.availability-select small { color: var(--muted); font-size: .73rem; line-height: 1.35; }
+.availability-select.available, .availability-label.available { color: var(--success); }
+.availability-select.busy, .availability-label.busy { color: var(--warning); }
+.availability-select.meeting, .availability-label.meeting { color: #b9a7ff; }
+.availability-select.away, .availability-label.away { color: var(--info); }
+.availability-select.dnd, .availability-label.dnd { color: var(--danger); }
+.availability-select.offline, .availability-label.offline,
+.availability-label.contact { color: var(--muted); background: rgba(255,255,255,.05); }
+.availability-label.available { background: var(--success-bg); }
+.availability-label.busy { background: var(--warning-bg); }
+.availability-label.meeting { background: rgba(185,167,255,.12); }
+.availability-label.away { background: var(--info-bg); }
+.availability-label.dnd { background: rgba(237,143,143,.12); }
+
+@media (max-width: 700px) {
+  .project-card-statuses { justify-content: flex-start; }
+}

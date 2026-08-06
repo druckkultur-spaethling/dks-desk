@@ -11,7 +11,8 @@ import {
   initialUsers
 } from "@/data/mock-data";
 
-const STORAGE_KEY = "druckkultur-desk-demo-v2.1";
+const APP_VERSION = "2.2";
+const STORAGE_KEY = "druckkultur-desk-demo-v2.2";
 const FILE_DB = "druckkultur-desk-files";
 const FILE_STORE = "uploads";
 
@@ -26,25 +27,27 @@ const baseNav = [
 
 const statusPresets = {
   "Anfrage eingegangen": { progress: 8, tone: "info", next: "Persönliche Prüfung durch druckkultur", detail: "Die Anfrage wird geprüft und einem Ansprechpartner zugeordnet." },
-  "In Beratung": { progress: 16, tone: "info", next: "Anforderungen gemeinsam klären", detail: "Material, Ausführung, Termin und wirtschaftliche Umsetzung werden abgestimmt." },
-  "Angebot liegt vor": { progress: 25, tone: "info", next: "Angebot prüfen und rückmelden", detail: "Das Angebot liegt im Dokumentenbereich bereit." },
-  "Druckdaten fehlen": { progress: 30, tone: "warning", next: "Druckdaten oder offene Inhalte bereitstellen", detail: "Für die weitere Bearbeitung fehlen noch Daten oder verbindliche Inhalte." },
-  "Druckdaten werden geprüft": { progress: 38, tone: "info", next: "Prüfbericht abwarten", detail: "Format, Beschnitt, Schriften, Bilder und technische Anforderungen werden geprüft." },
-  "Rückfrage offen": { progress: 36, tone: "warning", next: "Offene Rückfrage beantworten", detail: "Für die weitere Bearbeitung benötigt das Projektteam eine kurze Entscheidung oder Ergänzung." },
-  "Muster wird erstellt": { progress: 45, tone: "info", next: "Musterprüfung abwarten", detail: "Ein Weißmuster oder Produktionsmuster wird vorbereitet und anschließend gemeinsam geprüft." },
-  "Freigabe erforderlich": { progress: 48, tone: "warning", next: "Aktuelle Version verbindlich freigeben", detail: "Bitte Inhalt, Ausführung und gekennzeichnete Änderungen kontrollieren." },
-  "Für Produktion freigegeben": { progress: 60, tone: "success", next: "Keine Aktion erforderlich", detail: "Die Freigabe ist protokolliert. Das Projekt wird für die Produktion vorbereitet." },
-  "In Produktion": { progress: 74, tone: "success", next: "Keine Aktion erforderlich", detail: "Das Projekt befindet sich in der Produktion." },
-  "Weiterverarbeitung": { progress: 86, tone: "success", next: "Keine Aktion erforderlich", detail: "Falzen, Stanzen, Kleben, Veredeln oder Konfektionieren läuft." },
-  "Versandbereit": { progress: 95, tone: "success", next: "Lieferung erfolgt", detail: "Die Ware ist fertiggestellt und für Versand oder Abholung vorbereitet." },
-  "Geliefert": { progress: 100, tone: "success", next: "Projekt abgeschlossen", detail: "Die Lieferung wurde abgeschlossen. Dokumente bleiben im Projektarchiv verfügbar." },
-  "Abgeschlossen": { progress: 100, tone: "success", next: "Projekt abgeschlossen", detail: "Das Projekt ist abgeschlossen und bleibt mit allen Entscheidungen und Dokumenten archiviert." },
-  "Zurückgestellt": { progress: 12, tone: "neutral", next: "Weitere Entscheidung abwarten", detail: "Das Projekt ist vorübergehend pausiert." }
+  "In Beratung": { progress: 18, tone: "info", next: "Anforderungen gemeinsam klären", detail: "Material, Ausführung, Termin und wirtschaftliche Umsetzung werden persönlich abgestimmt." },
+  "Angebot liegt vor": { progress: 28, tone: "info", next: "Angebot prüfen und rückmelden", detail: "Das Angebot liegt im Dokumentenbereich bereit." },
+  "Druckdaten werden geprüft": { progress: 42, tone: "info", next: "Prüfbericht abwarten", detail: "Die Druckdaten werden auf die vereinbarte Ausführung geprüft." },
+  "Freigabe erforderlich": { progress: 55, tone: "warning", next: "Aktuelle Version verbindlich freigeben", detail: "Bitte Inhalt, Ausführung und gekennzeichnete Änderungen kontrollieren." },
+  "In Produktion": { progress: 75, tone: "success", next: "Keine Aktion erforderlich", detail: "Das Projekt wird produziert. Interne Fertigungsschritte werden nicht einzeln als Kundenstatus angezeigt." },
+  "Versandbereit": { progress: 92, tone: "success", next: "Lieferung erfolgt", detail: "Die Ware ist fertiggestellt und für Versand oder Abholung vorbereitet." },
+  "Geliefert": { progress: 100, tone: "success", next: "Projekt abgeschlossen", detail: "Die Lieferung wurde abgeschlossen. Dokumente bleiben im Projektarchiv verfügbar." }
 };
 
 const customerDocumentTypes = ["Druckdaten", "Anfrage", "Bestellung", "AB-Mahnung", "Liefermahnung", "Sonstiges"];
 const internalDocumentTypes = ["Angebot", "AB", "Freigabedaten", "Lieferschein", "Sonstiges"];
 const financialDocumentTypes = new Set(["Angebot", "AB", "Auftragsbestätigung"]);
+
+const availabilityOptions = {
+  available: { label: "Online / verfügbar", description: "Angemeldet und ansprechbar", tone: "available" },
+  busy: { label: "Beschäftigt", description: "Antwort kann etwas dauern", tone: "busy" },
+  meeting: { label: "Im Termin", description: "Vorübergehend nicht erreichbar", tone: "meeting" },
+  away: { label: "Außer Haus", description: "Derzeit nicht im Betrieb", tone: "away" },
+  dnd: { label: "Nicht stören", description: "Nur bei dringenden Anliegen", tone: "dnd" },
+  offline: { label: "Offline", description: "Aktuell nicht angemeldet", tone: "offline" }
+};
 
 const emptyRequest = {
   kind: "",
@@ -98,23 +101,16 @@ function receiptText(message, users, currentUser) {
   return `Gelesen von ${readers.slice(0, 2).join(" und ")}${readers.length > 2 ? ` +${readers.length - 2}` : ""}`;
 }
 function buildSteps(status) {
-  const stages = ["Anfrage", "Beratung", "Angebot", "Druckdaten", "Freigabe", "Produktion", "Weiterverarbeitung", "Lieferung"];
+  const stages = ["Anfrage", "Angebot", "Druckdaten", "Freigabe", "Produktion", "Lieferung"];
   const currentByStatus = {
     "Anfrage eingegangen": 0,
-    "In Beratung": 1,
-    "Angebot liegt vor": 2,
-    "Druckdaten fehlen": 3,
-    "Druckdaten werden geprüft": 3,
-    "Rückfrage offen": 3,
-    "Muster wird erstellt": 4,
-    "Freigabe erforderlich": 4,
-    "Für Produktion freigegeben": 5,
-    "In Produktion": 5,
-    "Weiterverarbeitung": 6,
-    "Versandbereit": 7,
-    "Geliefert": 8,
-    "Abgeschlossen": 8,
-    "Zurückgestellt": 1
+    "In Beratung": 0,
+    "Angebot liegt vor": 1,
+    "Druckdaten werden geprüft": 2,
+    "Freigabe erforderlich": 3,
+    "In Produktion": 4,
+    "Versandbereit": 5,
+    "Geliefert": 6
   };
   const current = currentByStatus[status] ?? 0;
   return stages.map((label, index) => ({
@@ -125,6 +121,49 @@ function buildSteps(status) {
     completedAt: index < current ? "erledigt" : ""
   }));
 }
+
+function normalizeStatus(status) {
+  const mapping = {
+    "Druckdaten fehlen": "Druckdaten werden geprüft",
+    "Rückfrage offen": "In Beratung",
+    "Muster wird erstellt": "In Beratung",
+    "Für Produktion freigegeben": "In Produktion",
+    "Weiterverarbeitung": "In Produktion",
+    "Abgeschlossen": "Geliefert",
+    "Zurückgestellt": "In Beratung"
+  };
+  const normalized = mapping[status] || status;
+  return statusPresets[normalized] ? normalized : "Anfrage eingegangen";
+}
+
+function normalizeProjectForVersion(project) {
+  const status = normalizeStatus(project.status);
+  const preset = statusPresets[status];
+  const expectedLabels = ["Anfrage", "Angebot", "Druckdaten", "Freigabe", "Produktion", "Lieferung"];
+  const hasCurrentWorkflow = Array.isArray(project.steps)
+    && project.steps.length === expectedLabels.length
+    && project.steps.every((step, index) => step.label === expectedLabels[index]);
+  return {
+    ...project,
+    status,
+    statusTone: preset.tone,
+    progress: hasCurrentWorkflow ? Number(project.progress ?? preset.progress) : preset.progress,
+    steps: hasCurrentWorkflow ? normalizeWorkflowSteps(project.steps) : buildSteps(status)
+  };
+}
+
+function normalizeUserForVersion(user) {
+  return user.type === "internal" && !user.availabilityStatus
+    ? { ...user, availabilityStatus: "available" }
+    : user;
+}
+
+function isProjectNewFor(project, user) {
+  if (!project || !user || !Array.isArray(project.seenBy)) return false;
+  if (project.createdByUserId === user.id || project.seenBy.includes(user.id)) return false;
+  return canSeeProject(user, project);
+}
+
 
 function normalizeWorkflowSteps(steps = []) {
   let currentAssigned = false;
@@ -182,8 +221,8 @@ function triggerDownload(blob, filename) {
 
 export default function PortalApp() {
   const [companies, setCompanies] = useState(initialCompanies);
-  const [users, setUsers] = useState(initialUsers);
-  const [projects, setProjects] = useState(initialProjects);
+  const [users, setUsers] = useState(() => initialUsers.map(normalizeUserForVersion));
+  const [projects, setProjects] = useState(() => initialProjects.map(normalizeProjectForVersion));
   const [messages, setMessages] = useState(initialMessages);
   const [documents, setDocuments] = useState(initialDocuments);
   const [callbacks, setCallbacks] = useState(initialCallbacks);
@@ -205,8 +244,8 @@ export default function PortalApp() {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed.companies)) setCompanies(parsed.companies);
-        if (Array.isArray(parsed.users)) setUsers(parsed.users);
-        if (Array.isArray(parsed.projects)) setProjects(parsed.projects);
+        if (Array.isArray(parsed.users)) setUsers(parsed.users.map(normalizeUserForVersion));
+        if (Array.isArray(parsed.projects)) setProjects(parsed.projects.map(normalizeProjectForVersion));
         if (Array.isArray(parsed.messages)) setMessages(parsed.messages);
         if (Array.isArray(parsed.documents)) setDocuments(parsed.documents);
         if (Array.isArray(parsed.callbacks)) setCallbacks(parsed.callbacks);
@@ -268,6 +307,15 @@ export default function PortalApp() {
     return result;
   }, [accessibleCompanies, projects, messages, currentUser]);
 
+  const newProjectsByCompany = useMemo(() => {
+    const result = {};
+    if (!currentUser) return result;
+    accessibleCompanies.forEach((company) => {
+      result[company.id] = projects.filter((project) => project.companyId === company.id && isProjectNewFor(project, currentUser)).length;
+    });
+    return result;
+  }, [accessibleCompanies, projects, currentUser]);
+
   const pendingCallbacksByCompany = useMemo(() => {
     const result = {};
     accessibleCompanies.forEach((company) => {
@@ -294,7 +342,16 @@ export default function PortalApp() {
   function logout() { setCurrentUserId(null); setSelectedCompanyId(null); setSelectedProjectId(null); setActiveView("dashboard"); setSearchTerm(""); setMessageTargetUserId(null); }
   function navigate(view) { setActiveView(view); if (view !== "project") setSelectedProjectId(null); setMobileMenuOpen(false); window.requestAnimationFrame(() => document.getElementById("main-content")?.focus()); }
   function switchCompany(companyId) { setSelectedCompanyId(companyId); setSelectedProjectId(null); setSearchTerm(""); setActiveView("dashboard"); setMobileMenuOpen(false); }
-  function openProject(projectId) { setSelectedProjectId(projectId); setActiveView("project"); setMobileMenuOpen(false); }
+  function openProject(projectId) {
+    if (currentUser) {
+      setProjects((current) => current.map((project) => project.id === projectId && !(project.seenBy || []).includes(currentUser.id)
+        ? { ...project, seenBy: [...(project.seenBy || []), currentUser.id] }
+        : project));
+    }
+    setSelectedProjectId(projectId);
+    setActiveView("project");
+    setMobileMenuOpen(false);
+  }
   function openDirectMessage(userId) { setMessageTargetUserId(userId); setActiveView("messages"); setSelectedProjectId(null); }
 
   function markThreadRead(threadId) {
@@ -318,11 +375,11 @@ export default function PortalApp() {
 
   function approveProject(projectId) {
     if (!currentUser?.rights.approve) return setNotice("Für Freigaben fehlt diesem Benutzer die Berechtigung.");
-    const preset = statusPresets["Für Produktion freigegeben"];
+    const preset = statusPresets["In Produktion"];
     setProjects((current) => current.map((project) => {
       if (project.id !== projectId) return project;
       const steps = normalizeWorkflowSteps((project.steps?.length ? project.steps : buildSteps(project.status)).map((step) => step.label === "Freigabe" ? { ...step, completed: true, completedAt: formatDate(), state: "done", date: formatDate() } : step));
-      return { ...project, status: "Für Produktion freigegeben", statusTone: preset.tone, progress: preset.progress, nextAction: preset.next, nextActionDetail: `Freigegeben durch ${currentUser.name}. ${preset.detail}`, due: "–", updated: "gerade eben", steps };
+      return { ...project, status: "In Produktion", statusTone: preset.tone, progress: preset.progress, nextAction: preset.next, nextActionDetail: `Freigegeben durch ${currentUser.name}. ${preset.detail}`, due: "–", updated: "gerade eben", steps };
     }));
     addProjectMessage(projectId, `Die aktuelle Version wurde von ${currentUser.name} verbindlich für die Produktion freigegeben.`);
     setNotice("Freigabe gespeichert und protokolliert.");
@@ -484,6 +541,9 @@ export default function PortalApp() {
         format: request.format || "",
         material: request.material || "",
         updated: "gerade eben",
+        createdAt: new Date().toISOString(),
+        createdByUserId: currentUser.id,
+        seenBy: [currentUser.id],
         steps: buildSteps("Anfrage eingegangen"),
         statusHistory: [{
           id: `status-${Date.now()}`,
@@ -539,6 +599,12 @@ export default function PortalApp() {
     }
   function completeCallback(id) { setCallbacks((current) => current.map((entry) => entry.id === id ? { ...entry, status: "completed", completedAt: formatDateTime() } : entry)); setDismissedCallbacks((current) => current.filter((item) => item !== id)); setNotice("Rückruf als erledigt markiert."); }
 
+  function updateAvailability(status) {
+    if (!currentUser || currentUser.type !== "internal" || !availabilityOptions[status]) return;
+    setUsers((current) => current.map((user) => user.id === currentUser.id ? { ...user, availabilityStatus: status, availabilityUpdatedAt: formatDateTime() } : user));
+    setNotice(`Status auf „${availabilityOptions[status].label}“ gesetzt.`);
+  }
+
   function updateCompany(companyId, patch) { setCompanies((current) => current.map((company) => company.id === companyId ? { ...company, ...patch } : company)); setNotice("Firmeneinstellungen gespeichert."); }
   function updateUser(userId, patch) { setUsers((current) => current.map((user) => user.id === userId ? { ...user, ...patch, rights: patch.rights ? { ...user.rights, ...patch.rights } : user.rights } : user)); setNotice("Benutzerdaten gespeichert."); }
   function inviteUser(companyId, form) {
@@ -546,7 +612,7 @@ export default function PortalApp() {
     setUsers((current) => [...current, { id, type: "customer", companyId, name: form.name, firstName: form.name.split(" ")[0], email: form.email, phone: form.phone, teamsAccount: form.teamsAccount || form.email, password: "demo", roleLabel: form.roleLabel || "Mitarbeiter/in", initials: form.name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase(), rights: { viewAllProjects: false, manageCompany: false, manageUsers: false, approve: false, viewFinancials: false, createRequests: true } }]);
     setNotice("Benutzer wurde angelegt und kann sich im Vorführmodus anmelden.");
   }
-  function resetDemo() { setCompanies(initialCompanies); setUsers(initialUsers); setProjects(initialProjects); setMessages(initialMessages); setDocuments(initialDocuments); setCallbacks(initialCallbacks); setCurrentUserId(null); setSelectedCompanyId(null); setActiveView("dashboard"); setSelectedProjectId(null); window.localStorage.removeItem(STORAGE_KEY); }
+  function resetDemo() { setCompanies(initialCompanies); setUsers(initialUsers.map(normalizeUserForVersion)); setProjects(initialProjects.map(normalizeProjectForVersion)); setMessages(initialMessages); setDocuments(initialDocuments); setCallbacks(initialCallbacks); setCurrentUserId(null); setSelectedCompanyId(null); setActiveView("dashboard"); setSelectedProjectId(null); window.localStorage.removeItem(STORAGE_KEY); }
 
   if (!hydrated) return <div className="loading-screen">druckkultur desk wird geladen …</div>;
   if (!currentUser) return <LoginScreen users={users} companies={companies} onLogin={login} />;
@@ -562,13 +628,13 @@ export default function PortalApp() {
   return (
     <div className="portal-root" style={companyStyle}>
       <a className="skip-link" href="#main-content">Zum Hauptinhalt</a>
-      <Sidebar navItems={navItems} activeView={activeView} currentUser={currentUser} currentCompany={currentCompany} companies={accessibleCompanies} unreadByCompany={unreadByCompany} callbackByCompany={pendingCallbacksByCompany} mobileOpen={mobileMenuOpen} onNavigate={navigate} onSwitchCompany={switchCompany} onClose={() => setMobileMenuOpen(false)} onLogout={logout} onReset={resetDemo} />
+      <Sidebar navItems={navItems} activeView={activeView} currentUser={currentUser} currentCompany={currentCompany} companies={accessibleCompanies} unreadByCompany={unreadByCompany} newProjectsByCompany={newProjectsByCompany} callbackByCompany={pendingCallbacksByCompany} mobileOpen={mobileMenuOpen} onNavigate={navigate} onSwitchCompany={switchCompany} onClose={() => setMobileMenuOpen(false)} onLogout={logout} onReset={resetDemo} onAvailabilityChange={updateAvailability} />
       <div className="app-column">
         <Topbar currentUser={currentUser} currentCompany={currentCompany} searchTerm={searchTerm} unreadCount={unreadByCompany[currentCompany?.id] || 0} callbackCount={pendingCallbacksForUser.length} onSearch={setSearchTerm} onMenu={() => setMobileMenuOpen(true)} onMessages={() => navigate("messages")} onCallbacks={() => navigate("callbacks")} onLogout={logout} />
         <main id="main-content" tabIndex="-1" className="main-content">
-          {activeView === "companies" && currentUser.type === "internal" && <CompaniesView companies={accessibleCompanies} projects={projects} unreadByCompany={unreadByCompany} callbackByCompany={pendingCallbacksByCompany} users={users} onOpen={switchCompany} />}
-          {activeView === "dashboard" && <DashboardView currentUser={currentUser} company={currentCompany} projects={visibleProjects} messages={visibleMessages} callbacks={callbacks} users={users} unreadByCompany={unreadByCompany} callbackByCompany={pendingCallbacksByCompany} companies={accessibleCompanies} onOpenProject={openProject} onNavigate={navigate} onApprove={approveProject} onSwitchCompany={switchCompany} />}
-          {activeView === "projects" && <ProjectsView projects={visibleProjects} users={users} searchTerm={searchTerm} onSearch={setSearchTerm} onOpenProject={openProject} onCreateProject={() => navigate("request")} />}
+          {activeView === "companies" && currentUser.type === "internal" && <CompaniesView companies={accessibleCompanies} projects={projects} unreadByCompany={unreadByCompany} newProjectsByCompany={newProjectsByCompany} callbackByCompany={pendingCallbacksByCompany} users={users} onOpen={switchCompany} />}
+          {activeView === "dashboard" && <DashboardView currentUser={currentUser} company={currentCompany} projects={visibleProjects} messages={visibleMessages} callbacks={callbacks} users={users} unreadByCompany={unreadByCompany} newProjectsByCompany={newProjectsByCompany} callbackByCompany={pendingCallbacksByCompany} companies={accessibleCompanies} onOpenProject={openProject} onNavigate={navigate} onApprove={approveProject} onSwitchCompany={switchCompany} />}
+          {activeView === "projects" && <ProjectsView projects={visibleProjects} users={users} currentUser={currentUser} searchTerm={searchTerm} onSearch={setSearchTerm} onOpenProject={openProject} onCreateProject={() => navigate("request")} />}
           {activeView === "project" && selectedProject && <ProjectDetailView project={selectedProject} users={users} currentUser={currentUser} messages={messages.filter((message) => message.projectId === selectedProject.id)} documents={documents.filter((document) => document.projectId === selectedProject.id && (!document.financial || currentUser.type === "internal" || currentUser.rights.viewFinancials))} onBack={() => navigate("projects")} onApprove={() => approveProject(selectedProject.id)} onMessage={(text) => addProjectMessage(selectedProject.id, text)} onMarkRead={() => markThreadRead(`project:${selectedProject.id}`)} onDownload={(document) => downloadDocument(document, selectedProject)} onUpload={(file, meta) => uploadDocument(selectedProject.id, file, meta)} onUpdate={(draft) => updateProject(selectedProject.id, draft)} />}
           {activeView === "messages" && <MessagesView messages={visibleMessages} projects={visibleProjects} users={users} company={currentCompany} currentUser={currentUser} initialTargetUserId={messageTargetUserId} onTargetUsed={() => setMessageTargetUserId(null)} onSendProject={addProjectMessage} onSendDirect={addDirectMessage} onMarkRead={markThreadRead} />}
           {activeView === "documents" && <DocumentsView documents={visibleDocuments} projects={visibleProjects} currentUser={currentUser} onDownload={downloadDocument} onUpload={uploadDocument} />}
@@ -596,35 +662,36 @@ function LoginScreen({ users, companies, onLogin }) {
   return <main className="login-page"><section className="login-brand"><div className="login-logo"><Icon name="print" size={40} /><span><strong>druckkultur</strong><small>desk</small></span></div><p className="eyebrow">Ihre externe Druckabteilung</p><h1>Direkter Kontakt. Alle Printprojekte an einem Ort.</h1><p>Beratung, Nachrichten, Dateien, Freigaben, Rückrufe und Projektsteuerung in einem gemeinsamen Arbeitsraum.</p><div className="login-features"><span><Icon name="users" size={22} /> Persönliche Ansprechpartner</span><span><Icon name="fileCheck" size={22} /> Echte Dateiablage im Browser</span><span><Icon name="phone" size={22} /> Sichtbare Rückrufwünsche</span></div></section><section className="login-panel"><div className="login-card"><div className="login-tabs"><button className={mode === "customer" ? "active" : ""} onClick={() => setMode("customer")}>Kundenlogin</button><button className={mode === "internal" ? "active" : ""} onClick={() => setMode("internal")}>Mitarbeiterlogin</button></div><div className="login-heading"><span className="eyebrow">Vorführmodus</span><h2>{mode === "customer" ? "Als Kunde anmelden" : "Als druckkultur-Mitarbeiter anmelden"}</h2></div><form onSubmit={submit}><label className="form-field"><span>E-Mail-Adresse</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label><label className="form-field"><span>Passwort</span><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>{error && <p className="form-error">{error}</p>}<button className="primary-button wide-button" type="submit">Anmelden <Icon name="arrow" size={19} /></button></form><div className="demo-accounts"><strong>Zugang auswählen</strong><p>Passwort ist bei allen Konten <code>demo</code>.</p><div className="demo-account-list">{candidates.map((user) => { const company = getCompany(companies, user.companyId); return <button key={user.id} onClick={() => { setEmail(user.email); setPassword("demo"); }}><span className="avatar">{user.initials}</span><span><strong>{user.name}</strong><small>{company ? `${company.shortName} · ` : ""}{user.roleLabel}</small></span></button>; })}</div></div><p className="demo-note"><Icon name="shield" size={17} />Die Vorführung speichert Änderungen in diesem Browser. Für den echten Mehrbenutzerbetrieb werden Server-Login, Datenbank und geschützte Dateiablage ergänzt.</p></div></section></main>;
 }
 
-function Sidebar({ navItems, activeView, currentUser, currentCompany, companies, unreadByCompany, callbackByCompany, mobileOpen, onNavigate, onSwitchCompany, onClose, onLogout, onReset }) {
-  return <><button className={classNames("mobile-backdrop", mobileOpen && "visible")} onClick={onClose} aria-label="Menü schließen" /><aside className={classNames("sidebar", mobileOpen && "mobile-open")}><div className="brand-lockup"><span className="brand-mark"><Icon name="print" size={28} /></span><span><strong>druckkultur</strong><small>desk</small></span></div><div className="company-identity"><CompanyLogo company={currentCompany} /><div><span>{currentUser.type === "internal" ? "Aktive Firma" : "Ihr Unternehmen"}</span><strong>{currentCompany?.name}</strong></div></div>{currentUser.type === "internal" && <div className="company-switcher"><div className="sidebar-label"><span>Firmen wechseln</span></div><div className="company-switch-list">{companies.map((company) => <button key={company.id} className={company.id === currentCompany?.id ? "active" : ""} onClick={() => onSwitchCompany(company.id)}><CompanyLogo company={company} compact /><span><strong>{company.shortName}</strong><small>{company.customerNumber}</small></span><span className="company-alerts">{(unreadByCompany[company.id] || 0) > 0 && <b className="count-badge">{unreadByCompany[company.id]}</b>}{(callbackByCompany[company.id] || 0) > 0 && <b className="phone-badge"><Icon name="phone" size={12} />{callbackByCompany[company.id]}</b>}</span></button>)}</div></div>}<nav className="main-nav">{navItems.map((item) => <button key={item.id} className={activeView === item.id ? "active" : ""} onClick={() => onNavigate(item.id)}><Icon name={item.icon} size={22} /><span>{item.label}</span>{item.id === "messages" && (unreadByCompany[currentCompany?.id] || 0) > 0 && <b className="count-badge">{unreadByCompany[currentCompany.id]}</b>}{item.id === "callbacks" && (callbackByCompany[currentCompany?.id] || 0) > 0 && <b className="phone-badge">{callbackByCompany[currentCompany.id]}</b>}</button>)}</nav><div className="sidebar-footer"><div className="signed-in-user"><span className="avatar">{currentUser.initials}</span><span><strong>{currentUser.name}</strong><small>{currentUser.roleLabel}</small></span></div><div className="sidebar-footer-actions"><button onClick={onLogout}>Abmelden</button><button onClick={onReset}>Vorführung zurücksetzen</button></div></div></aside></>;
+function Sidebar({ navItems, activeView, currentUser, currentCompany, companies, unreadByCompany, newProjectsByCompany, callbackByCompany, mobileOpen, onNavigate, onSwitchCompany, onClose, onLogout, onReset, onAvailabilityChange }) {
+  const availability = availabilityOptions[currentUser.availabilityStatus || "available"];
+  return <><button className={classNames("mobile-backdrop", mobileOpen && "visible")} onClick={onClose} aria-label="Menü schließen" /><aside className={classNames("sidebar", mobileOpen && "mobile-open")}><div className="brand-lockup"><span className="brand-mark"><Icon name="print" size={28} /></span><span><strong>druckkultur</strong><small>desk</small></span></div><div className="company-identity"><CompanyLogo company={currentCompany} /><div><span>{currentUser.type === "internal" ? "Aktive Firma" : "Ihr Unternehmen"}</span><strong>{currentCompany?.name}</strong></div></div>{currentUser.type === "internal" && <div className="company-switcher"><div className="sidebar-label"><span>Firmen wechseln</span></div><div className="company-switch-list">{companies.map((company) => <button key={company.id} className={company.id === currentCompany?.id ? "active" : ""} onClick={() => onSwitchCompany(company.id)}><CompanyLogo company={company} compact /><span><strong>{company.shortName}</strong><small>{company.customerNumber}</small></span><span className="company-alerts">{(newProjectsByCompany[company.id] || 0) > 0 && <b className="project-badge" title="Neue Projekte"><Icon name="projects" size={12} />{newProjectsByCompany[company.id]}</b>}{(unreadByCompany[company.id] || 0) > 0 && <b className="count-badge" title="Ungelesene Nachrichten">{unreadByCompany[company.id]}</b>}{(callbackByCompany[company.id] || 0) > 0 && <b className="phone-badge" title="Offene Rückrufe"><Icon name="phone" size={12} />{callbackByCompany[company.id]}</b>}</span></button>)}</div></div>}<nav className="main-nav">{navItems.map((item) => <button key={item.id} className={activeView === item.id ? "active" : ""} onClick={() => onNavigate(item.id)}><Icon name={item.icon} size={22} /><span>{item.label}</span>{item.id === "projects" && (newProjectsByCompany[currentCompany?.id] || 0) > 0 && <b className="project-badge"><Icon name="projects" size={12} />{newProjectsByCompany[currentCompany.id]}</b>}{item.id === "messages" && (unreadByCompany[currentCompany?.id] || 0) > 0 && <b className="count-badge">{unreadByCompany[currentCompany.id]}</b>}{item.id === "callbacks" && (callbackByCompany[currentCompany?.id] || 0) > 0 && <b className="phone-badge">{callbackByCompany[currentCompany.id]}</b>}</button>)}</nav><div className="sidebar-footer"><div className="signed-in-user"><span className="avatar">{currentUser.initials}</span><span><strong>{currentUser.name}</strong><small>{currentUser.roleLabel}</small></span></div>{currentUser.type === "internal" && <label className={classNames("availability-select", availability.tone)}><span><i />Eigener Status</span><select value={currentUser.availabilityStatus || "available"} onChange={(event) => onAvailabilityChange(event.target.value)}>{Object.entries(availabilityOptions).map(([value, option]) => <option value={value} key={value}>{option.label}</option>)}</select><small>{availability.description}</small></label>}<div className="sidebar-version">Version {APP_VERSION}</div><div className="sidebar-footer-actions"><button onClick={onLogout}>Abmelden</button><button onClick={onReset}>Vorführung zurücksetzen</button></div></div></aside></>;
 }
 function Topbar({ currentUser, currentCompany, searchTerm, unreadCount, callbackCount, onSearch, onMenu, onMessages, onCallbacks, onLogout }) {
   return <header className="topbar"><button className="icon-button mobile-menu" onClick={onMenu}><Icon name="menu" /></button><div className="topbar-context"><span>{currentCompany?.shortName}</span><strong>{formatToday()}</strong></div><label className="global-search"><Icon name="search" size={21} /><input value={searchTerm} onChange={(event) => onSearch(event.target.value)} placeholder="Projekt, Auftrag oder Status suchen …" /></label><div className="topbar-actions">{currentUser.type === "internal" && <button className="notification-button callback-topbar" onClick={onCallbacks} aria-label={`${callbackCount} offene Rückrufe`}><Icon name="phone" size={22} />{callbackCount > 0 && <b>{callbackCount}</b>}</button>}<button className="notification-button" onClick={onMessages}><Icon name="bell" size={22} />{unreadCount > 0 && <b>{unreadCount}</b>}</button><div className="topbar-user"><span className="avatar">{currentUser.initials}</span><span><strong>{currentUser.firstName}</strong><small>{currentUser.type === "internal" ? "druckkultur" : currentUser.roleLabel}</small></span><button onClick={onLogout}><Icon name="external" size={17} /></button></div></div></header>;
 }
 function CompanyLogo({ company, compact = false }) { return company?.logoData ? <span className={classNames("company-logo", compact && "compact")}><img src={company.logoData} alt={`${company.name} Logo`} /></span> : <span className={classNames("company-logo", compact && "compact")}>{company?.initials || "DK"}</span>; }
 
-function CompaniesView({ companies, projects, unreadByCompany, callbackByCompany, users, onOpen }) {
-  return <div className="page-stack"><PageHeader eyebrow="Mandantenübersicht" title="Alle betreuten Firmen" lead="Neue Nachrichten, Rückrufwünsche und offene Entscheidungen bleiben sichtbar, auch wenn Sie gerade in einer anderen Firma arbeiten." /><section className="company-grid">{companies.map((company) => { const companyProjects = projects.filter((project) => project.companyId === company.id); const open = companyProjects.filter((project) => project.progress < 100).length; const attention = companyProjects.filter((project) => project.statusTone === "warning").length; const customerUsers = users.filter((user) => user.type === "customer" && user.companyId === company.id).length; return <button className="company-card" key={company.id} onClick={() => onOpen(company.id)}><div className="company-card-head"><CompanyLogo company={company} /><div><span>{company.customerNumber}</span><h2>{company.name}</h2><p>{company.industry}</p></div><div className="company-card-alerts">{unreadByCompany[company.id] > 0 && <b className="new-pill">{unreadByCompany[company.id]} Nachrichten</b>}{callbackByCompany[company.id] > 0 && <b className="callback-pill"><Icon name="phone" size={14} /> {callbackByCompany[company.id]} Rückruf</b>}</div></div><div className="company-metrics"><div><strong>{open}</strong><span>laufende Projekte</span></div><div><strong>{attention}</strong><span>offene Entscheidungen</span></div><div><strong>{customerUsers}</strong><span>Kundenzugänge</span></div></div><span className="company-open">Arbeitsraum öffnen <Icon name="arrow" size={18} /></span></button>; })}</section></div>;
+function CompaniesView({ companies, projects, unreadByCompany, newProjectsByCompany, callbackByCompany, users, onOpen }) {
+  return <div className="page-stack"><PageHeader eyebrow="Mandantenübersicht" title="Alle betreuten Firmen" lead="Neue Nachrichten, Rückrufwünsche und offene Entscheidungen bleiben sichtbar, auch wenn Sie gerade in einer anderen Firma arbeiten." /><section className="company-grid">{companies.map((company) => { const companyProjects = projects.filter((project) => project.companyId === company.id); const open = companyProjects.filter((project) => project.progress < 100).length; const attention = companyProjects.filter((project) => project.statusTone === "warning").length; const customerUsers = users.filter((user) => user.type === "customer" && user.companyId === company.id).length; return <button className="company-card" key={company.id} onClick={() => onOpen(company.id)}><div className="company-card-head"><CompanyLogo company={company} /><div><span>{company.customerNumber}</span><h2>{company.name}</h2><p>{company.industry}</p></div><div className="company-card-alerts">{newProjectsByCompany[company.id] > 0 && <b className="project-new-pill"><Icon name="projects" size={14} /> {newProjectsByCompany[company.id]} neue Projekte</b>}{unreadByCompany[company.id] > 0 && <b className="new-pill">{unreadByCompany[company.id]} Nachrichten</b>}{callbackByCompany[company.id] > 0 && <b className="callback-pill"><Icon name="phone" size={14} /> {callbackByCompany[company.id]} Rückruf</b>}</div></div><div className="company-metrics"><div><strong>{open}</strong><span>laufende Projekte</span></div><div><strong>{attention}</strong><span>offene Entscheidungen</span></div><div><strong>{customerUsers}</strong><span>Kundenzugänge</span></div></div><span className="company-open">Arbeitsraum öffnen <Icon name="arrow" size={18} /></span></button>; })}</section></div>;
 }
 
-function DashboardView({ currentUser, company, projects, messages, callbacks, users, unreadByCompany, callbackByCompany, companies, onOpenProject, onNavigate, onApprove, onSwitchCompany }) {
+function DashboardView({ currentUser, company, projects, messages, callbacks, users, unreadByCompany, newProjectsByCompany, callbackByCompany, companies, onOpenProject, onNavigate, onApprove, onSwitchCompany }) {
   const attention = projects.filter((project) => project.statusTone === "warning" || project.status === "Angebot liegt vor");
   const unread = messages.filter((message) => message.senderUserId !== currentUser.id && !(message.readBy || []).includes(currentUser.id));
   const open = projects.filter((project) => project.progress < 100);
   const ownCallbacks = callbacks.filter((entry) => entry.status === "pending" && (currentUser.type === "internal" ? entry.assignedUserId === currentUser.id : entry.requesterUserId === currentUser.id));
-  return <div className="page-stack"><section className="dashboard-hero"><div><p className="eyebrow">{currentUser.type === "internal" ? `Arbeitsraum · ${company.name}` : "Ihre externe Druckabteilung"}</p><h1>Guten Morgen, {currentUser.firstName}.</h1><p>{attention.length ? `${attention.length} Vorgänge benötigen Ihre Aufmerksamkeit.` : "Alle wichtigen Vorgänge sind aktuell geklärt."}</p></div><div className="hero-actions"><button className="primary-button" onClick={() => onNavigate("request")}><Icon name="plus" size={20} /> Neues Projekt</button><button className="secondary-button" onClick={() => onNavigate("messages")}><Icon name="message" size={20} /> Nachricht senden</button></div></section>{currentUser.type === "internal" && <section className="cross-company-strip"><div><span className="eyebrow">Firmenübergreifend</span><strong>Was außerhalb von {company.shortName} neu ist</strong></div><div className="cross-company-items">{companies.filter((item) => item.id !== company.id).map((item) => <button key={item.id} onClick={() => onSwitchCompany(item.id)}><CompanyLogo company={item} compact /><span><strong>{item.shortName}</strong><small>{unreadByCompany[item.id] || 0} Nachrichten · {callbackByCompany[item.id] || 0} Rückrufe</small></span>{((unreadByCompany[item.id] || 0) + (callbackByCompany[item.id] || 0)) > 0 && <b>{(unreadByCompany[item.id] || 0) + (callbackByCompany[item.id] || 0)}</b>}</button>)}</div></section>}<section className="summary-row"><button onClick={() => onNavigate("projects")}><span className="metric-icon warning"><Icon name="clock" /></span><span><strong>{attention.length}</strong><small>offene Entscheidungen</small></span></button><button onClick={() => onNavigate("messages")}><span className="metric-icon info"><Icon name="message" /></span><span><strong>{unread.length}</strong><small>ungelesene Nachrichten</small></span></button><button onClick={() => currentUser.type === "internal" ? onNavigate("callbacks") : onNavigate("team")}><span className="metric-icon"><Icon name="phone" /></span><span><strong>{ownCallbacks.length}</strong><small>{currentUser.type === "internal" ? "offene Rückrufe" : "angeforderte Rückrufe"}</small></span></button><button onClick={() => onNavigate("projects")}><span className="metric-icon success"><Icon name="projects" /></span><span><strong>{open.length}</strong><small>laufende Projekte</small></span></button></section><section className="dashboard-focus-grid"><div className="panel focus-panel"><PanelHeader title="Jetzt wichtig" subtitle="Nur Vorgänge, bei denen eine Entscheidung oder Reaktion nötig ist" action="Alle Projekte" onAction={() => onNavigate("projects")} /><div className="focus-list">{attention.length ? attention.slice(0, 5).map((project) => <article key={project.id}><button onClick={() => onOpenProject(project.id)}><span className={classNames("status-dot", project.statusTone)} /><span><small>{project.id} · {project.category}</small><strong>{project.nextAction}</strong><p>{project.title}</p></span><time>{project.due}</time></button>{project.status === "Freigabe erforderlich" && currentUser.rights.approve && <button className="small-action" onClick={() => onApprove(project.id)}>Freigeben</button>}</article>) : <EmptyState title="Nichts offen" text="Derzeit ist keine Entscheidung erforderlich." />}</div></div><div className="panel"><PanelHeader title="Neu eingegangen" subtitle="Nachrichten aus den Projekten" action="Postfach" onAction={() => onNavigate("messages")} /><div className="message-preview-list">{unread.length ? unread.slice(-4).reverse().map((message) => { const sender = getUser(users, message.senderUserId); const project = projects.find((item) => item.id === message.projectId); return <button key={message.id} onClick={() => message.projectId ? onOpenProject(message.projectId) : onNavigate("messages")}><span className="avatar">{sender?.initials || "DK"}</span><span><strong>{sender?.name || "Projektteam"}</strong><small>{project?.title || "Direkte Nachricht"}</small><p>{message.text}</p></span><i /></button>; }) : <EmptyState title="Alles gelesen" text="Keine neue Nachricht wartet auf Sie." />}</div></div></section><section className="panel"><PanelHeader title="Laufende Projekte" subtitle={`${projects.length} sichtbare Projekte bei ${company.shortName}`} action="Alle öffnen" onAction={() => onNavigate("projects")} /><ProjectTable projects={projects.slice(0, 7)} onOpen={onOpenProject} /></section></div>;
+  return <div className="page-stack"><section className="dashboard-hero"><div><p className="eyebrow">{currentUser.type === "internal" ? `Arbeitsraum · ${company.name}` : "Ihre externe Druckabteilung"}</p><h1>Guten Morgen, {currentUser.firstName}.</h1><p>{attention.length ? `${attention.length} Vorgänge benötigen Ihre Aufmerksamkeit.` : "Alle wichtigen Vorgänge sind aktuell geklärt."}</p></div><div className="hero-actions"><button className="primary-button" onClick={() => onNavigate("request")}><Icon name="plus" size={20} /> Neues Projekt</button><button className="secondary-button" onClick={() => onNavigate("messages")}><Icon name="message" size={20} /> Nachricht senden</button></div></section>{currentUser.type === "internal" && <section className="cross-company-strip"><div><span className="eyebrow">Firmenübergreifend</span><strong>Was außerhalb von {company.shortName} neu ist</strong></div><div className="cross-company-items">{companies.filter((item) => item.id !== company.id).map((item) => <button key={item.id} onClick={() => onSwitchCompany(item.id)}><CompanyLogo company={item} compact /><span><strong>{item.shortName}</strong><small>{newProjectsByCompany[item.id] || 0} Projekte · {unreadByCompany[item.id] || 0} Nachrichten · {callbackByCompany[item.id] || 0} Rückrufe</small></span>{((newProjectsByCompany[item.id] || 0) + (unreadByCompany[item.id] || 0) + (callbackByCompany[item.id] || 0)) > 0 && <b>{(newProjectsByCompany[item.id] || 0) + (unreadByCompany[item.id] || 0) + (callbackByCompany[item.id] || 0)}</b>}</button>)}</div></section>}<section className="summary-row"><button onClick={() => onNavigate("projects")}><span className="metric-icon warning"><Icon name="clock" /></span><span><strong>{attention.length}</strong><small>offene Entscheidungen</small></span></button><button onClick={() => onNavigate("messages")}><span className="metric-icon info"><Icon name="message" /></span><span><strong>{unread.length}</strong><small>ungelesene Nachrichten</small></span></button><button onClick={() => currentUser.type === "internal" ? onNavigate("callbacks") : onNavigate("team")}><span className="metric-icon"><Icon name="phone" /></span><span><strong>{ownCallbacks.length}</strong><small>{currentUser.type === "internal" ? "offene Rückrufe" : "angeforderte Rückrufe"}</small></span></button><button onClick={() => onNavigate("projects")}><span className="metric-icon success"><Icon name="projects" /></span><span><strong>{newProjectsByCompany[company.id] || 0}</strong><small>neue Projekte</small></span></button></section><section className="dashboard-focus-grid"><div className="panel focus-panel"><PanelHeader title="Jetzt wichtig" subtitle="Nur Vorgänge, bei denen eine Entscheidung oder Reaktion nötig ist" action="Alle Projekte" onAction={() => onNavigate("projects")} /><div className="focus-list">{attention.length ? attention.slice(0, 5).map((project) => <article key={project.id}><button onClick={() => onOpenProject(project.id)}><span className={classNames("status-dot", project.statusTone)} /><span><small>{project.id} · {project.category}</small><strong>{project.nextAction}</strong><p>{project.title}</p></span><time>{project.due}</time></button>{project.status === "Freigabe erforderlich" && currentUser.rights.approve && <button className="small-action" onClick={() => onApprove(project.id)}>Freigeben</button>}</article>) : <EmptyState title="Nichts offen" text="Derzeit ist keine Entscheidung erforderlich." />}</div></div><div className="panel"><PanelHeader title="Neu eingegangen" subtitle="Nachrichten aus den Projekten" action="Postfach" onAction={() => onNavigate("messages")} /><div className="message-preview-list">{unread.length ? unread.slice(-4).reverse().map((message) => { const sender = getUser(users, message.senderUserId); const project = projects.find((item) => item.id === message.projectId); return <button key={message.id} onClick={() => message.projectId ? onOpenProject(message.projectId) : onNavigate("messages")}><span className="avatar">{sender?.initials || "DK"}</span><span><strong>{sender?.name || "Projektteam"}</strong><small>{project?.title || "Direkte Nachricht"}</small><p>{message.text}</p></span><i /></button>; }) : <EmptyState title="Alles gelesen" text="Keine neue Nachricht wartet auf Sie." />}</div></div></section><section className="panel"><PanelHeader title="Laufende Projekte" subtitle={`${projects.length} sichtbare Projekte bei ${company.shortName}`} action="Alle öffnen" onAction={() => onNavigate("projects")} /><ProjectTable projects={projects.slice(0, 7)} onOpen={onOpenProject} /></section></div>;
 }
 
 
-function ProjectsView({ projects, users, searchTerm, onSearch, onOpenProject, onCreateProject }) {
+function ProjectsView({ projects, users, currentUser, searchTerm, onSearch, onOpenProject, onCreateProject }) {
   const [filter, setFilter] = useState("Alle");
   const filters = ["Alle", "Offen", "Freigabe", "Produktion", "Abgeschlossen"];
   const filtered = projects.filter((project) =>
     filter === "Alle" ||
     (filter === "Offen" && project.progress < 100) ||
     (filter === "Freigabe" && (project.status.includes("Freigabe") || project.status.includes("Angebot"))) ||
-    (filter === "Produktion" && (project.status.includes("Produktion") || project.status.includes("Druck") || project.status.includes("Weiterverarbeitung"))) ||
+    (filter === "Produktion" && (project.status === "In Produktion" || project.status === "Versandbereit")) ||
     (filter === "Abgeschlossen" && project.progress === 100)
   );
   return (
@@ -658,7 +725,7 @@ function ProjectsView({ projects, users, searchTerm, onSearch, onOpenProject, on
             <article className="project-card" key={project.id}>
               <div className="project-card-top">
                 <span className="project-symbol"><Icon name={project.category.includes("Faltschachtel") || project.category.includes("Verpackung") ? "layers" : "print"} size={32} /></span>
-                <span className={classNames("status-badge", project.statusTone)}>{project.status}</span>
+                <span className="project-card-statuses">{isProjectNewFor(project, currentUser) && <b className="project-new-label">Neu eingegangen</b>}<span className={classNames("status-badge", project.statusTone)}>{project.status}</span></span>
               </div>
               <span className="project-meta">{project.id} · {project.category}</span>
               <h2>{project.title}</h2>
@@ -879,7 +946,7 @@ function ProjectControlPanel({ project, users, onSave }) {
       progress: preset.progress,
       nextAction: preset.next,
       nextActionDetail: preset.detail,
-      due: status.includes("Freigabe") || status.includes("fehlen") ? "Bitte zeitnah" : status === "Geliefert" || status === "Abgeschlossen" ? "–" : current.due
+      due: status.includes("Freigabe") ? "Bitte zeitnah" : status === "Geliefert" ? "–" : current.due
     }));
   }
 
@@ -1596,7 +1663,7 @@ function TeamView({ company, users, currentUser, onMessage, onCallback }) {
   const internalTeam = company.assignedTeam.map((id) => getUser(users, id)).filter(Boolean);
   const customerTeam = users.filter((user) => user.type === "customer" && user.companyId === company.id);
   const people = currentUser.type === "customer" ? internalTeam : customerTeam;
-  return <div className="page-stack"><PageHeader eyebrow="Klare Zuständigkeiten" title={currentUser.type === "customer" ? "Ihre Ansprechpartner" : `Kontakte bei ${company.shortName}`} lead="Nachrichten öffnen eine echte direkte Unterhaltung. Rückrufwünsche erscheinen beim zuständigen Mitarbeiter sofort und bleiben in seiner Rückrufzentrale sichtbar." /><section className="team-grid expanded-team">{people.map((person) => <article className="team-card" key={person.id}><div className="team-card-header"><div className="avatar xlarge">{person.initials}</div><span className="availability-label"><i />Heute erreichbar</span></div><span className="team-role">{person.roleLabel}</span><h2>{person.name}</h2><p>{person.email}<br />{person.phone}</p><div className="team-actions"><button className="primary-button compact" onClick={() => onMessage(person.id)}><Icon name="message" size={18} /> Nachricht</button>{currentUser.type === "customer" ? <button className="secondary-button compact" onClick={() => onCallback(person.id)}><Icon name="phone" size={18} /> Rückruf wünschen</button> : <a className="secondary-button compact" href={telHref(person.phone)}><Icon name="phone" size={18} /> Direkt anrufen</a>}</div></article>)}</section>{currentUser.type === "internal" && <section className="panel contact-rights"><PanelHeader title="Kundenzugänge" subtitle="Sicht und Freigaberechte je Mitarbeiter" /><div className="people-list">{customerTeam.map((person) => <article key={person.id}><span className="avatar">{person.initials}</span><div><strong>{person.name}</strong><span>{person.roleLabel} · {person.phone}</span></div><div className="rights-summary"><span>{person.rights.viewAllProjects ? "Alle Projekte" : "Nur zugewiesene Projekte"}</span><span>{person.rights.approve ? "Freigabe erlaubt" : "Keine Freigabe"}</span></div></article>)}</div></section>}</div>;
+  return <div className="page-stack"><PageHeader eyebrow="Klare Zuständigkeiten" title={currentUser.type === "customer" ? "Ihre Ansprechpartner" : `Kontakte bei ${company.shortName}`} lead="Nachrichten öffnen eine echte direkte Unterhaltung. Rückrufwünsche erscheinen beim zuständigen Mitarbeiter sofort und bleiben in seiner Rückrufzentrale sichtbar." /><section className="team-grid expanded-team">{people.map((person) => <article className="team-card" key={person.id}><div className="team-card-header"><div className="avatar xlarge">{person.initials}</div><span className={classNames("availability-label", person.type === "internal" ? (availabilityOptions[person.availabilityStatus || "available"]?.tone || "offline") : "contact")}><i />{person.type === "internal" ? (availabilityOptions[person.availabilityStatus || "available"]?.label || "Offline") : "Kundenkontakt"}</span></div><span className="team-role">{person.roleLabel}</span><h2>{person.name}</h2><p>{person.email}<br />{person.phone}</p><div className="team-actions"><button className="primary-button compact" onClick={() => onMessage(person.id)}><Icon name="message" size={18} /> Nachricht</button>{currentUser.type === "customer" ? <button className="secondary-button compact" onClick={() => onCallback(person.id)}><Icon name="phone" size={18} /> Rückruf wünschen</button> : <a className="secondary-button compact" href={telHref(person.phone)}><Icon name="phone" size={18} /> Direkt anrufen</a>}</div></article>)}</section>{currentUser.type === "internal" && <section className="panel contact-rights"><PanelHeader title="Kundenzugänge" subtitle="Sicht und Freigaberechte je Mitarbeiter" /><div className="people-list">{customerTeam.map((person) => <article key={person.id}><span className="avatar">{person.initials}</span><div><strong>{person.name}</strong><span>{person.roleLabel} · {person.phone}</span></div><div className="rights-summary"><span>{person.rights.viewAllProjects ? "Alle Projekte" : "Nur zugewiesene Projekte"}</span><span>{person.rights.approve ? "Freigabe erlaubt" : "Keine Freigabe"}</span></div></article>)}</div></section>}</div>;
 }
 
 

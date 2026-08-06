@@ -1,16 +1,19 @@
-# druckkultur desk – Vorführversion 2.1
+# druckkultur desk – Vorführversion 2.2
 
 Next.js-Webapp für einen persönlichen digitalen Projektraum zwischen druckkultur und ihren Kunden. Die Anwendung ist bewusst kein Online-Shop. Sie verbindet persönliche Beratung, Projekte, Nachrichten, Dokumente, Freigaben und Gesprächswünsche in einem gemeinsamen Arbeitsraum.
 
-## Änderungen in Version 2.1
+## Änderungen in Version 2.2
 
-- ursprüngliche feste Liste der Projektstatus wiederhergestellt
-- keine frei erfundenen oder zusätzlich erweiterten Status mehr
-- jeder Schritt im Projektverlauf kann durch einen druckkultur-Mitarbeiter als erledigt markiert oder wieder geöffnet werden
-- Erledigt-Markierungen erscheinen im Statusprotokoll und in der Kundensicht
-- Bestell-PDF-Auswertung um Einkaufskontakt, Lieferantennummer, Angebotsnummer, Referenz, Artikelnummern, Preise, Lieferadresse, Liefer- und Zahlungsbedingungen sowie besondere Vorgaben erweitert
-- vertrauliche Testbestellungen sind nicht im Repository und nicht in den Demodaten enthalten
-- neuer Browser-Speicherstand verhindert, dass ältere Zusatzstatus weiter angezeigt werden
+- Neue Kundenprojekte erhalten pro Benutzer einen eigenen Ungelesen-Status.
+- Projektzähler erscheinen am Menüpunkt **Projekte**, bei jeder Firma und in der Firmenübersicht.
+- Der Zähler verschwindet erst, wenn der jeweilige Benutzer das Projekt öffnet.
+- Die Versionsnummer steht unten links in der Sidebar.
+- Projektstatus sind auf acht verständliche Kundenstatus reduziert.
+- Der Projektverlauf zeigt nur Anfrage, Angebot, Druckdaten, Freigabe, Produktion und Lieferung.
+- Arbeitsschritte können weiterhin einzeln als erledigt markiert oder wieder geöffnet werden.
+- druckkultur-Mitarbeiter wählen ihren Status in der Sidebar: Online / verfügbar, Beschäftigt, Im Termin, Außer Haus, Nicht stören oder Offline.
+- Bestell-PDF-Auswertung und Dokumentarten aus Version 2.1 bleiben enthalten.
+- Vertrauliche Testbestellungen sind nicht im Repository und nicht in den Demodaten enthalten.
 
 ## Demo-Zugänge
 

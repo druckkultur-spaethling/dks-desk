@@ -49,6 +49,7 @@ export const initialUsers = [
     password: "demo",
     roleLabel: "Kundenberatung & Auftragsplanung",
     initials: "AB",
+    availabilityStatus: "available",
     companyIds: ["vitanova", "musterwerke"],
     rights: { manageCompanies: true, viewAllProjects: true, approve: true, viewFinancials: true }
   },
@@ -63,6 +64,7 @@ export const initialUsers = [
     password: "demo",
     roleLabel: "Geschäftsführung & Beratung",
     initials: "HS",
+    availabilityStatus: "busy",
     companyIds: ["vitanova", "alpenkraft", "musterwerke"],
     rights: { manageCompanies: true, viewAllProjects: true, approve: true, viewFinancials: true }
   },
@@ -77,6 +79,7 @@ export const initialUsers = [
     password: "demo",
     roleLabel: "Mailing & Digitaldruck",
     initials: "MG",
+    availabilityStatus: "meeting",
     companyIds: ["musterwerke", "alpenkraft"],
     rights: { manageCompanies: false, viewAllProjects: true, approve: true, viewFinancials: true }
   },
@@ -195,6 +198,35 @@ export const initialUsers = [
 ];
 
 export const initialProjects = [
+  {
+    id: "DK-260214",
+    companyId: "vitanova",
+    ownerUserIds: ["vita-maria"],
+    title: "Nachbestellung Produktflyer Vitamin D",
+    category: "Printprodukt",
+    status: "Anfrage eingegangen",
+    statusTone: "info",
+    progress: 8,
+    nextAction: "Persönliche Prüfung durch druckkultur",
+    nextActionDetail: "Die Bestellung und die gewünschte Liefermenge werden geprüft.",
+    due: "Rückmeldung heute",
+    delivery: "noch offen",
+    contactUserId: "dk-andreas",
+    quantity: "10.000 Stück",
+    specification: "Nachbestellung auf Basis des Vorjahresprojekts · aktualisierte Druckdaten folgen",
+    updated: "vor 4 Minuten",
+    createdAt: "2026-08-06T12:10:00+02:00",
+    createdByUserId: "vita-maria",
+    seenBy: ["vita-maria"],
+    steps: [
+      { label: "Anfrage", state: "current", date: "aktuell" },
+      { label: "Angebot", state: "upcoming", date: "offen" },
+      { label: "Druckdaten", state: "upcoming", date: "offen" },
+      { label: "Freigabe", state: "upcoming", date: "offen" },
+      { label: "Produktion", state: "upcoming", date: "offen" },
+      { label: "Lieferung", state: "upcoming", date: "offen" }
+    ]
+  },
   {
     id: "DK-260184",
     companyId: "vitanova",
