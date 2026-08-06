@@ -11,8 +11,8 @@ import {
   initialUsers
 } from "@/data/mock-data";
 
-const APP_VERSION = "2.7";
-const SESSION_KEY = "druckkultur-desk-session-v2.7";
+const APP_VERSION = "2.9";
+const SESSION_KEY = "druckkultur-desk-session-v2.9";
 
 let resolvedApiBase = null;
 let lastApiAttempts = [];
@@ -140,9 +140,30 @@ function deriveInitials(name = "") {
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts.slice(0, 2).map((part) => part[0]).join("") || "DK").toUpperCase();
 }
+function logoFingerprint(value = "") {
+  let hash = 2166136261;
+  const sample = String(value).slice(-4096);
+  for (let index = 0; index < sample.length; index += 1) {
+    hash ^= sample.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+function companyBrandRevision(company) {
+  const logoData = typeof company?.logoData === "string" ? company.logoData : "";
+  return `${company?.logoUpdatedAt || 0}-${logoData.length}-${logoFingerprint(logoData)}`;
+}
 function normalizeCompanyForVersion(company) {
   const name = company.name?.trim() || "Unbenannte Firma";
-  return { ...company, name, shortName: deriveCompanyShortName(name), initials: company.initials || deriveInitials(name), logoData: company.logoData || "" };
+  const logoData = typeof company.logoData === "string" ? company.logoData : "";
+  return {
+    ...company,
+    name,
+    shortName: deriveCompanyShortName(name),
+    initials: deriveInitials(name),
+    logoData,
+    logoUpdatedAt: Number(company.logoUpdatedAt || 0)
+  };
 }
 function optimizeLogoFile(file) {
   return new Promise((resolve, reject) => {
@@ -954,13 +975,22 @@ export default function PortalApp() {
   }
 
   function updateCompany(companyId, patch) {
+    lastEventRef.current = `${currentUser?.name || "Ein Benutzer"} hat die Firmendarstellung geändert`;
     setCompanies((current) => current.map((company) => {
       if (company.id !== companyId) return company;
       const name = patch.name?.trim() || company.name;
-      const nameChanged = name !== company.name;
-      return normalizeCompanyForVersion({ ...company, ...patch, name, shortName: deriveCompanyShortName(name), initials: nameChanged ? deriveInitials(name) : company.initials, logoUpdatedAt: Date.now() });
+      const hasLogoPatch = Object.prototype.hasOwnProperty.call(patch, "logoData");
+      const nextLogoData = hasLogoPatch ? String(patch.logoData || "") : String(company.logoData || "");
+      const logoChanged = nextLogoData !== String(company.logoData || "");
+      return normalizeCompanyForVersion({
+        ...company,
+        ...patch,
+        name,
+        logoData: nextLogoData,
+        logoUpdatedAt: logoChanged ? Date.now() : Number(company.logoUpdatedAt || 0)
+      });
     }));
-    setNotice("Firmenname, Kurzname, Initialen, Farbwelt und Logo wurden überall aktualisiert.");
+    setNotice("Firmenname, Farbwelt und Logo wurden zentral gespeichert und in allen Firmenlisten aktualisiert.");
   }
   function updateUser(userId, patch) {
     const target = users.find((user) => user.id === userId);
@@ -1091,7 +1121,7 @@ function Sidebar({ navItems, activeView, currentUser, currentCompany, companies,
         <div className="company-switch-list"><button className={!currentCompany ? "active all-companies-button" : "all-companies-button"} onClick={() => onSwitchCompany(null)}>
           <span className="company-logo compact"><Icon name="layers" size={18} /></span>
           <span><strong>Alle Firmen</strong><small>Zur Gesamtübersicht</small></span>
-        </button>{companies.map((company) => <button key={`${company.id}-${company.logoUpdatedAt || company.name}`} className={company.id === currentCompany?.id ? "active" : ""} onClick={() => onSwitchCompany(company.id)}>
+        </button>{companies.map((company) => <button key={`${company.id}-${companyBrandRevision(company)}-${company.name}`} className={company.id === currentCompany?.id ? "active" : ""} onClick={() => onSwitchCompany(company.id)}>
           <CompanyLogo company={company} compact />
           <span><strong>{company.name}</strong><small>{company.customerNumber}</small></span>
           <span className="company-alerts">{(newProjectsByCompany[company.id] || 0) > 0 && <b className="project-badge" title="Neue Projekte"><Icon name="projects" size={12} />{newProjectsByCompany[company.id]}</b>}{(unreadByCompany[company.id] || 0) > 0 && <b className="count-badge" title="Ungelesene Nachrichten">{unreadByCompany[company.id]}</b>}{(callbackByCompany[company.id] || 0) > 0 && <b className="phone-badge" title="Offene Rückrufe"><Icon name="phone" size={12} />{callbackByCompany[company.id]}</b>}</span>
@@ -1129,10 +1159,11 @@ function Topbar({ currentUser, currentCompany, searchTerm, unreadCount, callback
 }
 
 function CompanyLogo({ company, compact = false }) {
-  const revision = company?.logoUpdatedAt || company?.logoData?.length || company?.initials || "none";
-  return company?.logoData
-    ? <span key={`${company.id}-${revision}`} className={classNames("company-logo", compact && "compact")}><img src={company.logoData} alt={`${company.name} Logo`} /></span>
-    : <span key={`${company?.id || "none"}-${revision}`} className={classNames("company-logo", compact && "compact")}>{company?.initials || "DK"}</span>;
+  const logoData = typeof company?.logoData === "string" ? company.logoData.trim() : "";
+  const revision = companyBrandRevision(company);
+  return logoData
+    ? <span key={`${company.id}-${revision}`} data-company-id={company.id} data-logo-revision={revision} className={classNames("company-logo", compact && "compact")}><img key={`${company.id}-image-${revision}`} src={logoData} alt={`${company.name} Logo`} /></span>
+    : <span key={`${company?.id || "none"}-${revision}`} data-company-id={company?.id || "none"} className={classNames("company-logo", compact && "compact")}>{company?.initials || "DK"}</span>;
 }
 
 function SelectCompanyPrompt({ onOpenCompanies }) {
@@ -2303,15 +2334,16 @@ function CompanySettingsView({ company, users, currentUser, onUpdateCompany, onU
   useEffect(() => {
     setDraft({ name: company.name, primaryColor: company.primaryColor, accentColor: company.accentColor, logoData: company.logoData });
     setLogoMessage("");
-  }, [company.id, company.name, company.primaryColor, company.accentColor, company.logoData]);
+  }, [company.id, company.name, company.primaryColor, company.accentColor, company.logoData, company.logoUpdatedAt]);
 
   async function readLogo(file) {
     if (!file) return;
-    setLogoMessage("Logo wird optimiert …");
+    setLogoMessage("Logo wird optimiert und gespeichert …");
     try {
       const logoData = await optimizeLogoFile(file);
       setDraft((current) => ({ ...current, logoData }));
-      setLogoMessage(`„${file.name}“ wurde für das Portal optimiert. Bitte noch speichern.`);
+      onUpdateCompany(company.id, { logoData });
+      setLogoMessage(`„${file.name}“ wurde gespeichert und sofort in Sidebar und Firmenübersicht übernommen.`);
     } catch (error) {
       setLogoMessage(error.message || "Das Logo konnte nicht verarbeitet werden.");
     }
@@ -2350,12 +2382,12 @@ function CompanySettingsView({ company, users, currentUser, onUpdateCompany, onU
             <label className="form-field wide">
               <span>Kundenlogo</span>
               <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" onChange={(event) => readLogo(event.target.files?.[0])} />
-              <small className="field-help">PNG, JPG, WebP oder SVG bis 5 MB; wird automatisch verkleinert.</small>
+              <small className="field-help">PNG, JPG, WebP oder SVG bis 5 MB; wird automatisch verkleinert und sofort gespeichert.</small>
               {logoMessage && <small className="field-feedback">{logoMessage}</small>}
             </label>
           </div>
           <div className="settings-actions">
-            <button className="ghost-button" onClick={() => { setDraft((current) => ({ ...current, logoData: "" })); setLogoMessage("Logo wird beim Speichern entfernt."); }}>Logo entfernen</button>
+            <button className="ghost-button" onClick={() => { setDraft((current) => ({ ...current, logoData: "" })); onUpdateCompany(company.id, { logoData: "" }); setLogoMessage("Logo wurde entfernt und die Firmenlisten wurden aktualisiert."); }}>Logo entfernen</button>
             <button className="primary-button" onClick={() => { onUpdateCompany(company.id, draft); setLogoMessage("Firmenangaben wurden gespeichert."); }}>Darstellung speichern</button>
           </div>
         </div>

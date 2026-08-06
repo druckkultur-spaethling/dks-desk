@@ -1140,3 +1140,6 @@ body { font-size: 17px; }
 .connection-warning span { color: #dcaeae; font-size: .78rem; line-height: 1.4; }
 .connection-warning button { min-height: 38px; padding: 0 13px; border: 1px solid rgba(243,194,194,.32); border-radius: 9px; background: rgba(255,255,255,.05); color: #ffe2e2; font-weight: 750; cursor: pointer; }
 @media (max-width: 760px) { .connection-warning { grid-template-columns: auto 1fr; } .connection-warning button { grid-column: 1 / -1; width: 100%; } }
+
+/* Version 2.9 – eindeutige Firmenlogos */
+.company-logo img { display: block; max-width: 100%; max-height: 100%; }

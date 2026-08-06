@@ -28,21 +28,17 @@ function getDb() {
 }
 
 async function ensureSchema(db) {
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS app_state (
-      id TEXT PRIMARY KEY,
-      data TEXT NOT NULL,
-      revision INTEGER NOT NULL DEFAULT 1,
-      updated_at TEXT NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS sync_audit (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      revision INTEGER NOT NULL,
-      actor_user_id TEXT,
-      event TEXT,
-      created_at TEXT NOT NULL
-    );
-  `);
+  // D1Database.exec() treats line breaks as statement separators. A formatted
+  // multi-line CREATE TABLE therefore fails after the first line with
+  // "incomplete input". Prepared statements avoid this parsing problem.
+  await db.batch([
+    db.prepare(
+      "CREATE TABLE IF NOT EXISTS app_state (id TEXT PRIMARY KEY, data TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL)"
+    ),
+    db.prepare(
+      "CREATE TABLE IF NOT EXISTS sync_audit (id INTEGER PRIMARY KEY AUTOINCREMENT, revision INTEGER NOT NULL, actor_user_id TEXT, event TEXT, created_at TEXT NOT NULL)"
+    )
+  ]);
 }
 
 function validateState(state) {
