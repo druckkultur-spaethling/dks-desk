@@ -11,8 +11,8 @@ import {
   initialUsers
 } from "@/data/mock-data";
 
-const APP_VERSION = "2.9";
-const SESSION_KEY = "druckkultur-desk-session-v2.9";
+const APP_VERSION = "2.10";
+const SESSION_KEY = "druckkultur-desk-session-v2.10";
 
 let resolvedApiBase = null;
 let lastApiAttempts = [];
@@ -340,6 +340,8 @@ export default function PortalApp() {
   const [syncStatus, setSyncStatus] = useState("loading");
   const [syncError, setSyncError] = useState("");
   const [lastSyncedAt, setLastSyncedAt] = useState("");
+  const [sharedRevision, setSharedRevision] = useState(0);
+  const [databaseInstanceId, setDatabaseInstanceId] = useState("");
   const [messageTargetUserId, setMessageTargetUserId] = useState(null);
   const [callbackTargetUserId, setCallbackTargetUserId] = useState(null);
   const [dismissedCallbacks, setDismissedCallbacks] = useState([]);
@@ -354,6 +356,8 @@ export default function PortalApp() {
     const serialized = serializeSharedState(normalized);
     lastSerializedRef.current = serialized;
     revisionRef.current = Number(payload.revision || 1);
+    setSharedRevision(Number(payload.revision || 1));
+    setDatabaseInstanceId(String(payload.instanceId || ""));
     setCompanies(normalized.companies);
     setUsers(normalized.users);
     setProjects(normalized.projects);
@@ -483,10 +487,31 @@ export default function PortalApp() {
         }
         if (!response.ok) throw new Error(payload.error || "Änderungen konnten nicht gespeichert werden.");
         revisionRef.current = Number(payload.revision);
+        setSharedRevision(Number(payload.revision));
+        setDatabaseInstanceId(String(payload.instanceId || ""));
         lastSerializedRef.current = serialized;
         setLastSyncedAt(payload.updatedAt || new Date().toISOString());
-        setSyncStatus("online");
-        setSyncError("");
+
+        // Erst nach einem erneuten Primär-Lesezugriff gilt die Änderung als
+        // gemeinsam gespeichert. So zeigt die Oberfläche keinen Erfolg an,
+        // wenn ein Schreibvorgang nicht aus der zentralen Datenbank lesbar ist.
+        const verifyResponse = await fetchPortalApi(stateApiEndpoint(), {
+          cache: "no-store",
+          headers: { "Accept": "application/json" }
+        });
+        const verified = await readJsonResponse(verifyResponse);
+        if (Number(verified.revision || 0) < Number(payload.revision || 0)) {
+          throw new Error("Die Änderung wurde bestätigt, konnte aber nicht aus der gemeinsamen Datenbank zurückgelesen werden.");
+        }
+        if (Number(verified.revision || 0) > Number(payload.revision || 0)) {
+          applyRemoteState(verified, false);
+        } else {
+          setSharedRevision(Number(verified.revision || payload.revision));
+          setDatabaseInstanceId(String(verified.instanceId || payload.instanceId || ""));
+          setLastSyncedAt(verified.updatedAt || payload.updatedAt || new Date().toISOString());
+          setSyncStatus("online");
+          setSyncError("");
+        }
         lastEventRef.current = "Daten aktualisiert";
       } catch (error) {
         console.error("Gemeinsames Speichern fehlgeschlagen.", error);
@@ -510,7 +535,7 @@ export default function PortalApp() {
         setSyncStatus("error");
         setSyncError(error.message || "Live-Aktualisierung nicht erreichbar.");
       }
-    }, 2000);
+    }, 1500);
     return () => window.clearInterval(timer);
   }, [hydrated]);
 
@@ -1068,9 +1093,9 @@ export default function PortalApp() {
   return (
     <div className="portal-root" style={companyStyle}>
       <a className="skip-link" href="#main-content">Zum Hauptinhalt</a>
-      <Sidebar navItems={navItems} activeView={activeView} currentUser={currentUser} currentCompany={currentCompany} companies={accessibleCompanies} unreadByCompany={unreadByCompany} newProjectsByCompany={newProjectsByCompany} callbackByCompany={pendingCallbacksByCompany} mobileOpen={mobileMenuOpen} onNavigate={navigate} onSwitchCompany={switchCompany} onClose={() => setMobileMenuOpen(false)} onLogout={logout} onReset={resetDemo} onAvailabilityChange={updateAvailability} syncStatus={syncStatus} syncError={syncError} lastSyncedAt={lastSyncedAt} onRetrySync={retrySync} />
+      <Sidebar navItems={navItems} activeView={activeView} currentUser={currentUser} currentCompany={currentCompany} companies={accessibleCompanies} unreadByCompany={unreadByCompany} newProjectsByCompany={newProjectsByCompany} callbackByCompany={pendingCallbacksByCompany} mobileOpen={mobileMenuOpen} onNavigate={navigate} onSwitchCompany={switchCompany} onClose={() => setMobileMenuOpen(false)} onLogout={logout} onReset={resetDemo} onAvailabilityChange={updateAvailability} syncStatus={syncStatus} syncError={syncError} lastSyncedAt={lastSyncedAt} onRetrySync={retrySync} sharedRevision={sharedRevision} databaseInstanceId={databaseInstanceId} />
       <div className="app-column">
-        <Topbar currentUser={currentUser} currentCompany={currentCompany} searchTerm={searchTerm} unreadCount={unreadByCompany[currentCompany?.id] || 0} callbackCount={pendingCallbacksForUser.length} onSearch={setSearchTerm} onMenu={() => setMobileMenuOpen(true)} onMessages={() => navigate("messages")} onCallbacks={() => navigate("callbacks")} onLogout={logout} syncStatus={syncStatus} syncError={syncError} onRetrySync={retrySync} />
+        <Topbar currentUser={currentUser} currentCompany={currentCompany} searchTerm={searchTerm} unreadCount={unreadByCompany[currentCompany?.id] || 0} callbackCount={pendingCallbacksForUser.length} onSearch={setSearchTerm} onMenu={() => setMobileMenuOpen(true)} onMessages={() => navigate("messages")} onCallbacks={() => navigate("callbacks")} onLogout={logout} syncStatus={syncStatus} syncError={syncError} onRetrySync={retrySync} sharedRevision={sharedRevision} databaseInstanceId={databaseInstanceId} />
         <main id="main-content" tabIndex="-1" className="main-content">
           {syncStatus === "error" && <section className="connection-warning" role="alert"><Icon name="shield" size={22} /><div><strong>Keine Verbindung zur gemeinsamen Datenbank</strong><span>{syncError || "Änderungen können derzeit nicht zwischen mehreren Geräten synchronisiert werden."}</span></div><button type="button" onClick={retrySync}>Verbindung prüfen</button></section>}
           {activeView === "companies" && currentUser.type === "internal" && <CompaniesView companies={accessibleCompanies} projects={projects} unreadByCompany={unreadByCompany} newProjectsByCompany={newProjectsByCompany} callbackByCompany={pendingCallbacksByCompany} users={users} onOpen={switchCompany} />}
@@ -1104,7 +1129,7 @@ function LoginScreen({ users, companies, onLogin }) {
   return <main className="login-page"><section className="login-brand"><div className="login-logo"><Icon name="print" size={40} /><span><strong>druckkultur</strong><small>desk</small></span></div><p className="eyebrow">Ihre externe Druckabteilung</p><h1>Direkter Kontakt. Alle Printprojekte an einem Ort.</h1><p>Beratung, Nachrichten, Dateien, Freigaben, Rückrufe und Projektsteuerung in einem gemeinsamen Arbeitsraum.</p><div className="login-features"><span><Icon name="users" size={22} /> Persönliche Ansprechpartner</span><span><Icon name="fileCheck" size={22} /> Zentrale Dokumentablage für alle Geräte</span><span><Icon name="phone" size={22} /> Sichtbare Rückrufwünsche</span></div></section><section className="login-panel"><div className="login-card"><div className="login-tabs"><button className={mode === "customer" ? "active" : ""} onClick={() => { setMode("customer"); setError(""); }}>Kundenlogin</button><button className={mode === "internal" ? "active" : ""} onClick={() => { setMode("internal"); setError(""); }}>Mitarbeiterlogin</button></div><div className="login-heading"><span className="eyebrow">Vorführmodus</span><h2>{mode === "customer" ? "Als Kunde anmelden" : "Als druckkultur-Mitarbeiter anmelden"}</h2></div><form onSubmit={submit}><label className="form-field"><span>E-Mail-Adresse</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label><label className="form-field"><span>Passwort</span><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>{error && <p className="form-error">{error}</p>}<button className="primary-button wide-button" type="submit">Anmelden <Icon name="arrow" size={19} /></button></form><div className="demo-accounts"><strong>Zugang auswählen</strong><p>Passwort ist bei allen Konten <code>demo</code>.</p><div className="demo-account-list">{candidates.map((user) => { const company = getCompany(companies, user.companyId); return <button key={user.id} onClick={() => { setEmail(user.email); setPassword("demo"); }}><span className="avatar">{user.initials}</span><span><strong>{user.name}</strong><small>{company ? `${company.shortName} · ` : ""}{user.roleLabel}</small></span></button>; })}</div></div><p className="demo-note"><Icon name="shield" size={17} />Firmen, Projekte, Nachrichten und Dokumente werden gemeinsam in Webflow Cloud gespeichert und auf mehreren Geräten automatisch synchronisiert.</p></div></section></main>;
 }
 
-function Sidebar({ navItems, activeView, currentUser, currentCompany, companies, unreadByCompany, newProjectsByCompany, callbackByCompany, mobileOpen, onNavigate, onSwitchCompany, onClose, onLogout, onReset, onAvailabilityChange, syncStatus, syncError, lastSyncedAt, onRetrySync }) {
+function Sidebar({ navItems, activeView, currentUser, currentCompany, companies, unreadByCompany, newProjectsByCompany, callbackByCompany, mobileOpen, onNavigate, onSwitchCompany, onClose, onLogout, onReset, onAvailabilityChange, syncStatus, syncError, lastSyncedAt, onRetrySync, sharedRevision, databaseInstanceId }) {
   const availability = availabilityOptions[currentUser.availabilityStatus || "available"];
   const syncLabel = syncStatus === "saving" ? "Wird gespeichert …" : syncStatus === "error" ? "Verbindung unterbrochen" : syncStatus === "loading" ? "Daten werden geladen …" : "Gemeinsam gespeichert";
   const syncTime = lastSyncedAt ? new Date(lastSyncedAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }) : "";
@@ -1122,7 +1147,7 @@ function Sidebar({ navItems, activeView, currentUser, currentCompany, companies,
           <span className="company-logo compact"><Icon name="layers" size={18} /></span>
           <span><strong>Alle Firmen</strong><small>Zur Gesamtübersicht</small></span>
         </button>{companies.map((company) => <button key={`${company.id}-${companyBrandRevision(company)}-${company.name}`} className={company.id === currentCompany?.id ? "active" : ""} onClick={() => onSwitchCompany(company.id)}>
-          <CompanyLogo company={company} compact />
+          <CompanyLogo company={company} compact sidebar />
           <span><strong>{company.name}</strong><small>{company.customerNumber}</small></span>
           <span className="company-alerts">{(newProjectsByCompany[company.id] || 0) > 0 && <b className="project-badge" title="Neue Projekte"><Icon name="projects" size={12} />{newProjectsByCompany[company.id]}</b>}{(unreadByCompany[company.id] || 0) > 0 && <b className="count-badge" title="Ungelesene Nachrichten">{unreadByCompany[company.id]}</b>}{(callbackByCompany[company.id] || 0) > 0 && <b className="phone-badge" title="Offene Rückrufe"><Icon name="phone" size={12} />{callbackByCompany[company.id]}</b>}</span>
         </button>)}</div>
@@ -1136,7 +1161,7 @@ function Sidebar({ navItems, activeView, currentUser, currentCompany, companies,
       <div className="sidebar-footer">
         <div className="signed-in-user"><span className="avatar">{currentUser.initials}</span><span><strong>{currentUser.name}</strong><small>{currentUser.roleLabel}</small></span></div>
         {currentUser.type === "internal" && <label className={classNames("availability-select", availability.tone)}><span><i />Eigener Status</span><select value={currentUser.availabilityStatus || "available"} onChange={(event) => onAvailabilityChange(event.target.value)}>{Object.entries(availabilityOptions).map(([value, option]) => <option value={value} key={value}>{option.label}</option>)}</select><small>{availability.description}</small></label>}
-        <button type="button" className={classNames("sync-status", syncStatus)} onClick={onRetrySync} title={syncError || "Verbindung zur gemeinsamen Datenbank prüfen"}><i /><span><strong>{syncLabel}</strong>{syncStatus === "error" && syncError ? <small>{syncError}</small> : syncTime && <small>Stand {syncTime} Uhr</small>}</span></button>
+        <button type="button" className={classNames("sync-status", syncStatus)} onClick={onRetrySync} title={syncError || "Verbindung zur gemeinsamen Datenbank prüfen"}><i /><span><strong>{syncLabel}</strong>{syncStatus === "error" && syncError ? <small>{syncError}</small> : <small>{syncTime ? `Stand ${syncTime} Uhr` : ""}{sharedRevision ? ` · Datenstand #${sharedRevision}` : ""}{databaseInstanceId ? ` · DB ${databaseInstanceId.slice(0, 8)}` : ""}</small>}</span></button>
         <div className="sidebar-version">Version {APP_VERSION}</div>
         <div className="sidebar-footer-actions"><button onClick={onLogout}>Abmelden</button>{currentUser.type === "internal" && currentUser.rights.manageCompanies && <button onClick={onReset}>Gemeinsame Demo zurücksetzen</button>}</div>
       </div>
@@ -1158,12 +1183,12 @@ function Topbar({ currentUser, currentCompany, searchTerm, unreadCount, callback
   </header>;
 }
 
-function CompanyLogo({ company, compact = false }) {
+function CompanyLogo({ company, compact = false, sidebar = false }) {
   const logoData = typeof company?.logoData === "string" ? company.logoData.trim() : "";
   const revision = companyBrandRevision(company);
   return logoData
-    ? <span key={`${company.id}-${revision}`} data-company-id={company.id} data-logo-revision={revision} className={classNames("company-logo", compact && "compact")}><img key={`${company.id}-image-${revision}`} src={logoData} alt={`${company.name} Logo`} /></span>
-    : <span key={`${company?.id || "none"}-${revision}`} data-company-id={company?.id || "none"} className={classNames("company-logo", compact && "compact")}>{company?.initials || "DK"}</span>;
+    ? <span key={`${company.id}-${revision}`} data-company-id={company.id} data-logo-revision={revision} className={classNames("company-logo", compact && "compact", sidebar && "sidebar-company-logo", "has-logo")}><img key={`${company.id}-image-${revision}`} src={logoData} alt={`${company.name} Logo`} /></span>
+    : <span key={`${company?.id || "none"}-${revision}`} data-company-id={company?.id || "none"} className={classNames("company-logo", compact && "compact", sidebar && "sidebar-company-logo", "no-logo")}>{company?.initials || "DK"}</span>;
 }
 
 function SelectCompanyPrompt({ onOpenCompanies }) {

@@ -1,43 +1,89 @@
-# druckkultur desk – Version 2.9
+# druckkultur Portal – Version 2.10
 
-Version 2.9 behebt den Webflow-D1-Fehler `D1_EXEC_ERROR ... incomplete input` beim erstmaligen Erstellen der zentralen Tabellen.
+Next.js-Webapp für Webflow Cloud unter dem Mount-Pfad `/app`.
 
-## Ursache
+## Wichtigste Prüfung nach dem Deployment
 
-`D1Database.exec()` behandelt Zeilenumbrüche als Trennung einzelner SQL-Anweisungen. Der bisher formatierte Block wurde deshalb bereits nach `CREATE TABLE IF NOT EXISTS app_state (` ausgeführt und war unvollständig.
+Melden Sie sich auf beiden Test-PCs an. Unten links in der Sidebar steht beispielsweise:
 
-## Korrektur
+```text
+Gemeinsam gespeichert
+Stand 14:20 Uhr · Datenstand #17 · DB 9f2a18c4
+Version 2.10
+```
 
-Die Tabellen `app_state` und `sync_audit` werden nun über zwei vorbereitete Anweisungen in `db.batch()` angelegt. Die vorhandene Migration bleibt zusätzlich bestehen.
+Auf beiden PCs müssen dieselbe DB-Kennung und nach kurzer Zeit derselbe Datenstand erscheinen.
 
-## GitHub aktualisieren
+Unterscheiden sich die DB-Kennungen, greifen die Geräte auf unterschiedliche Webflow-Environments oder unterschiedliche URLs zu. Verwenden Sie auf beiden Geräten exakt:
 
-Mindestens ersetzen:
+```text
+https://www.druckkultur.de/app
+```
+
+Nicht auf einem Gerät die Webflow-Vorschau-URL und auf dem anderen die veröffentlichte Domain verwenden. Webflow-Speicher ist je Environment getrennt.
+
+## Datenbank direkt prüfen
+
+Öffnen Sie auf beiden PCs:
+
+```text
+https://www.druckkultur.de/app/api/health
+```
+
+Die Werte `instanceId` und `revision` müssen übereinstimmen. Beispiel:
+
+```json
+{
+  "ok": true,
+  "database": true,
+  "files": true,
+  "revision": 17,
+  "instanceId": "9f2a18c4-...",
+  "storage": "webflow-sqlite-primary"
+}
+```
+
+## Synchronisation testen
+
+1. Auf beiden PCs dieselbe URL öffnen.
+2. Auf beiden PCs die DB-Kennung vergleichen.
+3. Auf PC A eine Firmenfarbe ändern oder eine Nachricht senden.
+4. Warten, bis unten links ein höherer Datenstand angezeigt wird.
+5. PC B übernimmt den neuen Datenstand normalerweise innerhalb von 1,5 Sekunden.
+
+## GitHub-Aktualisierung
+
+Laden Sie den Inhalt des entpackten Ordners in das bestehende Repository. Ersetzen Sie mindestens:
 
 - `app/api/state/route.js`
+- `app/api/health/route.js`
+- `app/globals.css`
 - `components/PortalApp.jsx`
+- `migrations/0002_instance_meta.sql`
 - `package.json`
 - `VERSION.txt`
-- `README.md`
-- `CHANGELOG-v2.9.md`
 
-Sicherer ist es, den gesamten Inhalt des entpackten Ordners hochzuladen. `package.json` muss direkt im Hauptverzeichnis des Repositorys liegen.
+Die Datei `package.json` muss direkt im Hauptverzeichnis des Repositorys liegen.
 
-## Webflow-Pfad
+## Webflow
 
-Wenn die App als Bestandteil der bestehenden Webflow-Seite eingerichtet wurde, ist der Mount-Pfad `/app` korrekt. Die Adresse lautet dann:
+Root directory:
 
-`https://www.druckkultur.de/app`
+```text
+./
+```
 
-Ein eigener Host wie `app.druckkultur.de` ist eine alternative, eigenständige Bereitstellung und nicht für die Funktion der Datenbank erforderlich.
+Mount-Pfad der Environment:
 
-## Nach dem Deployment prüfen
+```text
+/app
+```
 
-1. Unten links muss `Version 2.9` stehen.
-2. `https://www.druckkultur.de/app/api/health` aufrufen.
-3. Erwartete Antwort: `ok: true`, `database: true`.
-4. Danach Portal öffnen und auf zwei Geräten eine Nachricht testen.
+Benötigte Storage-Bindings:
 
-## Hinweis
+- `DB` – SQLite
+- `CLOUD_FILES` – Object Storage
 
-Die Demo-Anmeldung ist weiterhin nicht für echte vertrauliche Kundendaten vorgesehen.
+## Sicherheit
+
+Die Version ist weiterhin eine gemeinsame Vorführversion mit Demo-Login. Für echte Kundendaten sind serverseitige Authentifizierung, vollständige Mandantenprüfung und ein Datenschutzkonzept erforderlich.
