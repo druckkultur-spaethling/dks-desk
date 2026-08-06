@@ -11,6 +11,9 @@ const nextConfig = {
   assetPrefix: mountPath || undefined,
   images: {
     unoptimized: true
+  },
+  env: {
+    NEXT_PUBLIC_BASE_PATH: mountPath
   }
 };
 

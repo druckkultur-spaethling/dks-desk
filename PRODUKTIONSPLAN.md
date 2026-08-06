@@ -114,3 +114,33 @@ Die Vorführversion verwendet IndexedDB im Browser. Im Produktivbetrieb:
 - zeitlich begrenzte Download-Links verwenden
 - große Druck-PDFs mit unterbrochenen Uploads fortsetzen können
 - Vorschaubilder und PDF-Seiten serverseitig erzeugen
+
+## 13. Dokumentarten und Dokumentenworkflow
+
+- Dokumentarten abhängig von Rolle und Projektschritt anbieten
+- Kunden: Druckdaten, Anfrage, Bestellung, AB-Mahnung, Liefermahnung, Sonstiges
+- druckkultur: Angebot, AB, Freigabedaten, Lieferschein, Sonstiges
+- eigene Dokumentarten später administrierbar machen
+- Dokumentart, Version, Uploader, Zeitpunkt und Sichtbarkeit serverseitig speichern
+- Finanzdokumente nur für berechtigte Benutzer anzeigen
+- neue Dokumente als Ereignis im Projektverlauf protokollieren
+
+## 14. Bestell-PDF und KI-Auswertung
+
+- PDF nur nach ausdrücklichem Upload des Benutzers analysieren
+- API-Schlüssel ausschließlich serverseitig speichern
+- erkannte Angaben nie ungeprüft verbindlich übernehmen
+- Bestellnummer, Produkt, Menge, Format, Material, Termin und Besonderheiten extrahieren
+- Unsicherheiten und leere Felder klar markieren
+- Original-PDF dem Projekt als Bestellung zuordnen
+- Datenschutzhinweis und Löschfristen für externe KI-Verarbeitung festlegen
+- optional eigene lokale Dokumentenerkennung für besonders vertrauliche Kunden prüfen
+
+## 15. Gesprächswünsche über Telefon und Teams
+
+- Benutzerprofil enthält Telefonnummer und Teams-Konto
+- Kunde wählt pro Anfrage den gewünschten Kontaktweg
+- Mitarbeiter sieht Kontaktweg bereits im Popup
+- Telefon über vorhandenes Softphone oder Telefonanlagen-API auslösen
+- Teams über Deep Link oder Microsoft Graph anbinden
+- Status offen, angenommen, nicht erreicht und erledigt vorsehen

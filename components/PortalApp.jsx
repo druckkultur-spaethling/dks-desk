@@ -11,7 +11,7 @@ import {
   initialUsers
 } from "@/data/mock-data";
 
-const STORAGE_KEY = "druckkultur-desk-demo-v3";
+const STORAGE_KEY = "druckkultur-desk-demo-v4";
 const FILE_DB = "druckkultur-desk-files";
 const FILE_STORE = "uploads";
 
@@ -26,23 +26,47 @@ const baseNav = [
 
 const statusPresets = {
   "Anfrage eingegangen": { progress: 8, tone: "info", next: "Persönliche Prüfung durch druckkultur", detail: "Die Anfrage wird geprüft und einem Ansprechpartner zugeordnet." },
+  "Anfrage wird geprüft": { progress: 12, tone: "info", next: "Machbarkeit und Unterlagen prüfen", detail: "Das Projektteam prüft die Anfrage, vorhandene Dateien und offene Angaben." },
   "In Beratung": { progress: 16, tone: "info", next: "Anforderungen gemeinsam klären", detail: "Material, Ausführung, Termin und wirtschaftliche Umsetzung werden abgestimmt." },
+  "Angebot in Erstellung": { progress: 21, tone: "info", next: "Angebot wird ausgearbeitet", detail: "Kalkulation, Material und Produktionsweg werden aktuell zusammengestellt." },
   "Angebot liegt vor": { progress: 25, tone: "info", next: "Angebot prüfen und rückmelden", detail: "Das Angebot liegt im Dokumentenbereich bereit." },
+  "Auftrag bestätigt": { progress: 29, tone: "success", next: "Unterlagen und Produktionsplanung vorbereiten", detail: "Der Auftrag wurde bestätigt und wird für die weitere Bearbeitung vorbereitet." },
   "Druckdaten fehlen": { progress: 30, tone: "warning", next: "Druckdaten oder offene Inhalte bereitstellen", detail: "Für die weitere Bearbeitung fehlen noch Daten oder verbindliche Inhalte." },
   "Druckdaten werden geprüft": { progress: 38, tone: "info", next: "Prüfbericht abwarten", detail: "Format, Beschnitt, Schriften, Bilder und technische Anforderungen werden geprüft." },
+  "Korrekturdaten erforderlich": { progress: 40, tone: "warning", next: "Korrigierte Daten bereitstellen", detail: "Die Datenprüfung hat Punkte ergeben, die vor der Freigabe angepasst werden müssen." },
   "Rückfrage offen": { progress: 36, tone: "warning", next: "Offene Rückfrage beantworten", detail: "Für die weitere Bearbeitung benötigt das Projektteam eine kurze Entscheidung oder Ergänzung." },
+  "Material bestellt": { progress: 43, tone: "info", next: "Materialeingang abwarten", detail: "Das benötigte Material wurde bestellt oder für das Projekt reserviert." },
   "Muster wird erstellt": { progress: 45, tone: "info", next: "Musterprüfung abwarten", detail: "Ein Weißmuster oder Produktionsmuster wird vorbereitet und anschließend gemeinsam geprüft." },
+  "Freigabedaten in Erstellung": { progress: 47, tone: "info", next: "Freigabedaten werden vorbereitet", detail: "Die verbindliche Freigabeversion wird aktuell erstellt." },
   "Freigabe erforderlich": { progress: 48, tone: "warning", next: "Aktuelle Version verbindlich freigeben", detail: "Bitte Inhalt, Ausführung und gekennzeichnete Änderungen kontrollieren." },
   "Für Produktion freigegeben": { progress: 60, tone: "success", next: "Keine Aktion erforderlich", detail: "Die Freigabe ist protokolliert. Das Projekt wird für die Produktion vorbereitet." },
+  "Druckplatten erstellt": { progress: 66, tone: "success", next: "Druck wird vorbereitet", detail: "Die Druckplatten sind erstellt und der Auftrag ist für die Maschine vorbereitet." },
+  "Im Druck": { progress: 74, tone: "success", next: "Keine Aktion erforderlich", detail: "Das Projekt wird aktuell gedruckt." },
   "In Produktion": { progress: 74, tone: "success", next: "Keine Aktion erforderlich", detail: "Das Projekt befindet sich in der Produktion." },
   "Weiterverarbeitung": { progress: 86, tone: "success", next: "Keine Aktion erforderlich", detail: "Falzen, Stanzen, Kleben, Veredeln oder Konfektionieren läuft." },
+  "Qualitätskontrolle": { progress: 91, tone: "success", next: "Endkontrolle abschließen", detail: "Menge, Ausführung und Verpackung werden abschließend kontrolliert." },
   "Versandbereit": { progress: 95, tone: "success", next: "Lieferung erfolgt", detail: "Die Ware ist fertiggestellt und für Versand oder Abholung vorbereitet." },
+  "Teilversand erfolgt": { progress: 96, tone: "success", next: "Restmenge fertigstellen oder zustellen", detail: "Ein Teil der Ware wurde bereits ausgeliefert." },
   "Geliefert": { progress: 100, tone: "success", next: "Projekt abgeschlossen", detail: "Die Lieferung wurde abgeschlossen. Dokumente bleiben im Projektarchiv verfügbar." },
   "Abgeschlossen": { progress: 100, tone: "success", next: "Projekt abgeschlossen", detail: "Das Projekt ist abgeschlossen und bleibt mit allen Entscheidungen und Dokumenten archiviert." },
   "Zurückgestellt": { progress: 12, tone: "neutral", next: "Weitere Entscheidung abwarten", detail: "Das Projekt ist vorübergehend pausiert." }
 };
 
-const emptyRequest = { kind: "", title: "", description: "", quantity: "", deadline: "" };
+const customerDocumentTypes = ["Druckdaten", "Anfrage", "Bestellung", "AB-Mahnung", "Liefermahnung", "Sonstiges"];
+const internalDocumentTypes = ["Angebot", "AB", "Freigabedaten", "Lieferschein", "Sonstiges"];
+const financialDocumentTypes = new Set(["Angebot", "AB", "Auftragsbestätigung"]);
+
+const emptyRequest = {
+  kind: "",
+  title: "",
+  description: "",
+  quantity: "",
+  deadline: "",
+  customerOrderNumber: "",
+  format: "",
+  material: "",
+  documentType: "Anfrage"
+};
 
 function classNames(...values) { return values.filter(Boolean).join(" "); }
 function getUser(users, id) { return users.find((user) => user.id === id); }
@@ -52,6 +76,8 @@ function formatDateTime() { return new Intl.DateTimeFormat("de-DE", { day: "2-di
 function formatDate() { return new Intl.DateTimeFormat("de-DE").format(new Date()); }
 function formatBytes(bytes) { if (!bytes) return "0 KB"; const units = ["B", "KB", "MB", "GB"]; const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1); return `${(bytes / 1024 ** i).toFixed(i > 1 ? 1 : 0)} ${units[i]}`; }
 function telHref(phone = "") { return `tel:${phone.replace(/[^+\d]/g, "")}`; }
+function teamsHref(account = "") { return `https://teams.microsoft.com/l/chat/0/0?users=${encodeURIComponent(account)}`; }
+function documentTypesFor(user) { return user?.type === "internal" ? internalDocumentTypes : customerDocumentTypes; }
 function canSeeProject(user, project) {
   if (!user || !project) return false;
   if (user.type === "internal") return user.companyIds.includes(project.companyId);
@@ -263,41 +289,81 @@ export default function PortalApp() {
   }
 
   function updateProject(projectId, draft) {
-    if (currentUser?.type !== "internal") return;
-    const preset = statusPresets[draft.status] || {};
-    setProjects((current) => current.map((project) => project.id === projectId ? {
-      ...project,
-      status: draft.status,
-      statusTone: preset.tone || project.statusTone,
-      progress: Number(draft.progress),
-      nextAction: draft.nextAction,
-      nextActionDetail: draft.nextActionDetail,
-      due: draft.due,
-      delivery: draft.delivery,
-      contactUserId: draft.contactUserId,
-      ownerUserIds: draft.ownerUserIds,
-      updated: "gerade eben",
-      steps: draft.status !== project.status ? buildSteps(draft.status) : project.steps
-    } : project));
-    addProjectMessage(projectId, `Projektstatus aktualisiert: ${draft.status}. Nächster Schritt: ${draft.nextAction}.`);
-    setNotice("Projektverlauf und Zuständigkeiten wurden aktualisiert.");
-  }
+      if (currentUser?.type !== "internal") return;
+      const original = projects.find((project) => project.id === projectId);
+      const preset = statusPresets[draft.status] || {};
+      const statusChanged = original && draft.status !== original.status;
+      const historyEntry = statusChanged ? {
+        id: `status-${Date.now()}`,
+        status: draft.status,
+        note: draft.statusNote || draft.nextActionDetail || "",
+        byUserId: currentUser.id,
+        at: formatDateTime()
+      } : null;
+      setProjects((current) => current.map((project) => project.id === projectId ? {
+        ...project,
+        status: draft.status,
+        statusTone: preset.tone || draft.statusTone || project.statusTone || "info",
+        progress: Number(draft.progress),
+        nextAction: draft.nextAction,
+        nextActionDetail: draft.nextActionDetail,
+        due: draft.due,
+        delivery: draft.delivery,
+        contactUserId: draft.contactUserId,
+        ownerUserIds: draft.ownerUserIds,
+        updated: "gerade eben",
+        steps: statusChanged && statusPresets[draft.status] ? buildSteps(draft.status) : project.steps,
+        statusHistory: historyEntry ? [...(project.statusHistory || []), historyEntry] : (project.statusHistory || [])
+      } : project));
+      addProjectMessage(projectId, statusChanged
+        ? `Neuer Projektstatus: ${draft.status}. Nächster Schritt: ${draft.nextAction}.`
+        : `Projektangaben wurden aktualisiert. Nächster Schritt: ${draft.nextAction}.`);
+      setNotice(statusChanged ? `Status „${draft.status}“ wurde gespeichert.` : "Projektangaben wurden aktualisiert.");
+    }
 
   async function uploadDocument(projectId, file, meta = {}, companyIdOverride = null) {
-    if (!file || !currentUser) return null;
-    if (file.size > 20 * 1024 * 1024) { setNotice("Für die Vorführung sind Dateien bis 20 MB möglich."); return null; }
-    const project = projects.find((item) => item.id === projectId);
-    const companyId = companyIdOverride || project?.companyId || currentCompany?.id;
-    const blobKey = `file-${Date.now()}-${file.name}`;
-    try {
-      await saveFileBlob(blobKey, file);
-      const document = { id: `upload-${Date.now()}`, companyId, projectId, title: meta.title || file.name, type: meta.type || "Kundendatei", version: meta.version || "", date: formatDate(), size: formatBytes(file.size), financial: false, fileName: file.name, mimeType: file.type, blobKey, uploadedBy: currentUser.id };
-      setDocuments((current) => [document, ...current]);
-      setMessages((current) => [...current, { id: `upload-message-${Date.now()}`, companyId, projectId, senderUserId: currentUser.id, text: `Datei hochgeladen: ${file.name} (${formatBytes(file.size)}).`, time: "Gerade eben", createdAt: new Date().toISOString(), readBy: [currentUser.id] }]);
-      setNotice(`„${file.name}“ wurde gespeichert und dem Projekt zugeordnet.`);
-      return document;
-    } catch (error) { console.error(error); setNotice("Der Browser konnte die Datei nicht speichern. Bitte privaten Modus verlassen oder Speicherzugriff erlauben."); return null; }
-  }
+      if (!file || !currentUser) return null;
+      if (file.size > 20 * 1024 * 1024) { setNotice("Für die Vorführung sind Dateien bis 20 MB möglich."); return null; }
+      const project = projects.find((item) => item.id === projectId);
+      const companyId = companyIdOverride || project?.companyId || currentCompany?.id;
+      const blobKey = `file-${Date.now()}-${file.name}`;
+      const documentType = meta.type || (currentUser.type === "internal" ? "Sonstiges" : "Druckdaten");
+      try {
+        await saveFileBlob(blobKey, file);
+        const document = {
+          id: `upload-${Date.now()}`,
+          companyId,
+          projectId,
+          title: meta.title || file.name,
+          type: documentType,
+          version: meta.version || "",
+          date: formatDate(),
+          size: formatBytes(file.size),
+          financial: typeof meta.financial === "boolean" ? meta.financial : financialDocumentTypes.has(documentType),
+          fileName: file.name,
+          mimeType: file.type,
+          blobKey,
+          uploadedBy: currentUser.id
+        };
+        setDocuments((current) => [document, ...current]);
+        setMessages((current) => [...current, {
+          id: `upload-message-${Date.now()}`,
+          companyId,
+          projectId,
+          senderUserId: currentUser.id,
+          text: `${documentType} hochgeladen: ${file.name} (${formatBytes(file.size)}).`,
+          time: "Gerade eben",
+          createdAt: new Date().toISOString(),
+          readBy: [currentUser.id]
+        }]);
+        setNotice(`„${file.name}“ wurde als ${documentType} gespeichert.`);
+        return document;
+      } catch (error) {
+        console.error(error);
+        setNotice("Der Browser konnte die Datei nicht speichern. Bitte privaten Modus verlassen oder Speicherzugriff erlauben.");
+        return null;
+      }
+    }
 
   async function downloadDocument(document, project) {
     try {
@@ -315,33 +381,98 @@ export default function PortalApp() {
   }
 
   async function createRequest(request, file) {
-    if (currentUser?.type === "customer" && !currentUser.rights.createRequests) return setNotice("Dieser Benutzer darf keine neuen Projekte anlegen.");
-    const id = `DK-${String(Date.now()).slice(-6)}`;
-    const companyId = currentCompany.id;
-    const ownerUserIds = currentUser.type === "customer" ? [currentUser.id] : users.filter((user) => user.type === "customer" && user.companyId === companyId && user.rights.viewAllProjects).slice(0, 1).map((user) => user.id);
-    const project = { id, companyId, ownerUserIds, title: request.title || "Neue Projektidee", category: request.kind || "Beratungsanfrage", status: "Anfrage eingegangen", statusTone: "info", progress: 8, nextAction: "Persönliche Prüfung durch druckkultur", nextActionDetail: "Die Angaben werden gesichtet. Anschließend meldet sich der zuständige Ansprechpartner.", due: "Rückmeldung folgt", delivery: request.deadline || "noch offen", contactUserId: currentCompany.assignedTeam[0], quantity: request.quantity || "noch offen", specification: request.description || "Details werden im persönlichen Gespräch geklärt.", updated: "gerade eben", steps: buildSteps("Anfrage eingegangen") };
-    setProjects((current) => [project, ...current]);
-    setMessages((current) => [...current, { id: `request-${Date.now()}`, companyId, projectId: id, senderUserId: currentUser.id, text: `Neue Projektanfrage angelegt: „${project.title}“.`, time: "Gerade eben", createdAt: new Date().toISOString(), readBy: [currentUser.id] }]);
-    if (file) await uploadDocument(id, file, { type: "Anfragedatei" }, companyId);
-    setSelectedProjectId(id);
-    setActiveView("project");
-    setNotice("Projekt wurde angelegt und direkt an das zuständige Team übergeben.");
-  }
+      if (currentUser?.type === "customer" && !currentUser.rights.createRequests) return setNotice("Dieser Benutzer darf keine neuen Projekte anlegen.");
+      const id = `DK-${String(Date.now()).slice(-6)}`;
+      const companyId = currentCompany.id;
+      const ownerUserIds = currentUser.type === "customer"
+        ? [currentUser.id]
+        : users.filter((user) => user.type === "customer" && user.companyId === companyId && user.rights.viewAllProjects).slice(0, 1).map((user) => user.id);
+      const specificationParts = [
+        request.description,
+        request.format ? `Format: ${request.format}` : "",
+        request.material ? `Material: ${request.material}` : "",
+        request.customerOrderNumber ? `Kunden-Bestellnummer: ${request.customerOrderNumber}` : ""
+      ].filter(Boolean);
+      const project = {
+        id,
+        companyId,
+        ownerUserIds,
+        title: request.title || "Neue Projektidee",
+        category: request.kind || "Beratungsanfrage",
+        status: "Anfrage eingegangen",
+        statusTone: "info",
+        progress: 8,
+        nextAction: "Persönliche Prüfung durch druckkultur",
+        nextActionDetail: "Die Angaben und hochgeladenen Unterlagen werden gesichtet. Anschließend meldet sich der zuständige Ansprechpartner.",
+        due: "Rückmeldung folgt",
+        delivery: request.deadline || "noch offen",
+        contactUserId: currentCompany.assignedTeam[0],
+        quantity: request.quantity || "noch offen",
+        specification: specificationParts.join(" · ") || "Details werden im persönlichen Gespräch geklärt.",
+        customerOrderNumber: request.customerOrderNumber || "",
+        format: request.format || "",
+        material: request.material || "",
+        updated: "gerade eben",
+        steps: buildSteps("Anfrage eingegangen"),
+        statusHistory: [{
+          id: `status-${Date.now()}`,
+          status: "Anfrage eingegangen",
+          note: currentUser.type === "internal" ? "Projekt durch druckkultur angelegt." : "Projekt durch den Kunden angelegt.",
+          byUserId: currentUser.id,
+          at: formatDateTime()
+        }]
+      };
+      setProjects((current) => [project, ...current]);
+      setMessages((current) => [...current, {
+        id: `request-${Date.now()}`,
+        companyId,
+        projectId: id,
+        senderUserId: currentUser.id,
+        text: `Neues Projekt angelegt: „${project.title}“.`,
+        time: "Gerade eben",
+        createdAt: new Date().toISOString(),
+        readBy: [currentUser.id]
+      }]);
+      if (file) await uploadDocument(id, file, { type: request.documentType || (currentUser.type === "internal" ? "Sonstiges" : "Anfrage") }, companyId);
+      setSelectedProjectId(id);
+      setActiveView("project");
+      setNotice("Projekt wurde angelegt und direkt geöffnet.");
+    }
 
   function requestCallback(assignedUserId, form) {
-    if (!currentUser || currentUser.type !== "customer") return;
-    const entry = { id: `cb-${Date.now()}`, companyId: currentCompany.id, requesterUserId: currentUser.id, assignedUserId, phone: currentUser.phone, subject: form.subject || "Persönliche Rücksprache", preferredTime: form.preferredTime || "Möglichst bald", requestedAt: formatDateTime(), status: "pending", completedAt: "" };
-    setCallbacks((current) => [entry, ...current]);
-    setCallbackTargetUserId(null);
-    setNotice(`Rückrufwunsch an ${getUser(users, assignedUserId)?.firstName || "das Projektteam"} gesendet. Ihre hinterlegte Nummer: ${currentUser.phone}`);
-  }
+      if (!currentUser || currentUser.type !== "customer") return;
+      const contactMethod = form.contactMethod === "teams" ? "teams" : "phone";
+      const contactValue = contactMethod === "teams"
+        ? (currentUser.teamsAccount || currentUser.email)
+        : currentUser.phone;
+      const entry = {
+        id: `cb-${Date.now()}`,
+        companyId: currentCompany.id,
+        requesterUserId: currentUser.id,
+        assignedUserId,
+        phone: currentUser.phone,
+        teamsAccount: currentUser.teamsAccount || currentUser.email,
+        contactMethod,
+        contactValue,
+        subject: form.subject || "Persönliche Rücksprache",
+        preferredTime: form.preferredTime || "Möglichst bald",
+        requestedAt: formatDateTime(),
+        status: "pending",
+        completedAt: ""
+      };
+      setCallbacks((current) => [entry, ...current]);
+      setCallbackTargetUserId(null);
+      setNotice(contactMethod === "teams"
+        ? `Teams-Gespräch mit ${getUser(users, assignedUserId)?.firstName || "dem Projektteam"} angefordert.`
+        : `Rückrufwunsch an ${getUser(users, assignedUserId)?.firstName || "das Projektteam"} gesendet.`);
+    }
   function completeCallback(id) { setCallbacks((current) => current.map((entry) => entry.id === id ? { ...entry, status: "completed", completedAt: formatDateTime() } : entry)); setDismissedCallbacks((current) => current.filter((item) => item !== id)); setNotice("Rückruf als erledigt markiert."); }
 
   function updateCompany(companyId, patch) { setCompanies((current) => current.map((company) => company.id === companyId ? { ...company, ...patch } : company)); setNotice("Firmeneinstellungen gespeichert."); }
   function updateUser(userId, patch) { setUsers((current) => current.map((user) => user.id === userId ? { ...user, ...patch, rights: patch.rights ? { ...user.rights, ...patch.rights } : user.rights } : user)); setNotice("Benutzerdaten gespeichert."); }
   function inviteUser(companyId, form) {
     const id = `${companyId}-${Date.now()}`;
-    setUsers((current) => [...current, { id, type: "customer", companyId, name: form.name, firstName: form.name.split(" ")[0], email: form.email, phone: form.phone, password: "demo", roleLabel: form.roleLabel || "Mitarbeiter/in", initials: form.name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase(), rights: { viewAllProjects: false, manageCompany: false, manageUsers: false, approve: false, viewFinancials: false, createRequests: true } }]);
+    setUsers((current) => [...current, { id, type: "customer", companyId, name: form.name, firstName: form.name.split(" ")[0], email: form.email, phone: form.phone, teamsAccount: form.teamsAccount || form.email, password: "demo", roleLabel: form.roleLabel || "Mitarbeiter/in", initials: form.name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase(), rights: { viewAllProjects: false, manageCompany: false, manageUsers: false, approve: false, viewFinancials: false, createRequests: true } }]);
     setNotice("Benutzer wurde angelegt und kann sich im Vorführmodus anmelden.");
   }
   function resetDemo() { setCompanies(initialCompanies); setUsers(initialUsers); setProjects(initialProjects); setMessages(initialMessages); setDocuments(initialDocuments); setCallbacks(initialCallbacks); setCurrentUserId(null); setSelectedCompanyId(null); setActiveView("dashboard"); setSelectedProjectId(null); window.localStorage.removeItem(STORAGE_KEY); }
@@ -366,11 +497,11 @@ export default function PortalApp() {
         <main id="main-content" tabIndex="-1" className="main-content">
           {activeView === "companies" && currentUser.type === "internal" && <CompaniesView companies={accessibleCompanies} projects={projects} unreadByCompany={unreadByCompany} callbackByCompany={pendingCallbacksByCompany} users={users} onOpen={switchCompany} />}
           {activeView === "dashboard" && <DashboardView currentUser={currentUser} company={currentCompany} projects={visibleProjects} messages={visibleMessages} callbacks={callbacks} users={users} unreadByCompany={unreadByCompany} callbackByCompany={pendingCallbacksByCompany} companies={accessibleCompanies} onOpenProject={openProject} onNavigate={navigate} onApprove={approveProject} onSwitchCompany={switchCompany} />}
-          {activeView === "projects" && <ProjectsView projects={visibleProjects} users={users} searchTerm={searchTerm} onSearch={setSearchTerm} onOpenProject={openProject} />}
+          {activeView === "projects" && <ProjectsView projects={visibleProjects} users={users} searchTerm={searchTerm} onSearch={setSearchTerm} onOpenProject={openProject} onCreateProject={() => navigate("request")} />}
           {activeView === "project" && selectedProject && <ProjectDetailView project={selectedProject} users={users} currentUser={currentUser} messages={messages.filter((message) => message.projectId === selectedProject.id)} documents={documents.filter((document) => document.projectId === selectedProject.id && (!document.financial || currentUser.type === "internal" || currentUser.rights.viewFinancials))} onBack={() => navigate("projects")} onApprove={() => approveProject(selectedProject.id)} onMessage={(text) => addProjectMessage(selectedProject.id, text)} onMarkRead={() => markThreadRead(`project:${selectedProject.id}`)} onDownload={(document) => downloadDocument(document, selectedProject)} onUpload={(file, meta) => uploadDocument(selectedProject.id, file, meta)} onUpdate={(draft) => updateProject(selectedProject.id, draft)} />}
           {activeView === "messages" && <MessagesView messages={visibleMessages} projects={visibleProjects} users={users} company={currentCompany} currentUser={currentUser} initialTargetUserId={messageTargetUserId} onTargetUsed={() => setMessageTargetUserId(null)} onSendProject={addProjectMessage} onSendDirect={addDirectMessage} onMarkRead={markThreadRead} />}
-          {activeView === "documents" && <DocumentsView documents={visibleDocuments} projects={visibleProjects} onDownload={downloadDocument} onUpload={uploadDocument} />}
-          {activeView === "request" && <RequestView company={currentCompany} onCreate={createRequest} />}
+          {activeView === "documents" && <DocumentsView documents={visibleDocuments} projects={visibleProjects} currentUser={currentUser} onDownload={downloadDocument} onUpload={uploadDocument} />}
+          {activeView === "request" && <RequestView company={currentCompany} currentUser={currentUser} onCreate={createRequest} />}
           {activeView === "team" && <TeamView company={currentCompany} users={users} currentUser={currentUser} onMessage={openDirectMessage} onCallback={(id) => setCallbackTargetUserId(id)} />}
           {activeView === "callbacks" && currentUser.type === "internal" && <CallbacksView callbacks={callbacks.filter((entry) => entry.assignedUserId === currentUser.id)} users={users} companies={companies} onComplete={completeCallback} onOpenCompany={switchCompany} />}
           {activeView === "settings" && canManageCompany && <CompanySettingsView company={currentCompany} users={users.filter((user) => user.type === "customer" && user.companyId === currentCompany.id)} currentUser={currentUser} onUpdateCompany={updateCompany} onUpdateUser={updateUser} onInvite={inviteUser} />}
@@ -414,11 +545,73 @@ function DashboardView({ currentUser, company, projects, messages, callbacks, us
   return <div className="page-stack"><section className="dashboard-hero"><div><p className="eyebrow">{currentUser.type === "internal" ? `Arbeitsraum · ${company.name}` : "Ihre externe Druckabteilung"}</p><h1>Guten Morgen, {currentUser.firstName}.</h1><p>{attention.length ? `${attention.length} Vorgänge benötigen Ihre Aufmerksamkeit.` : "Alle wichtigen Vorgänge sind aktuell geklärt."}</p></div><div className="hero-actions"><button className="primary-button" onClick={() => onNavigate("request")}><Icon name="plus" size={20} /> Neues Projekt</button><button className="secondary-button" onClick={() => onNavigate("messages")}><Icon name="message" size={20} /> Nachricht senden</button></div></section>{currentUser.type === "internal" && <section className="cross-company-strip"><div><span className="eyebrow">Firmenübergreifend</span><strong>Was außerhalb von {company.shortName} neu ist</strong></div><div className="cross-company-items">{companies.filter((item) => item.id !== company.id).map((item) => <button key={item.id} onClick={() => onSwitchCompany(item.id)}><CompanyLogo company={item} compact /><span><strong>{item.shortName}</strong><small>{unreadByCompany[item.id] || 0} Nachrichten · {callbackByCompany[item.id] || 0} Rückrufe</small></span>{((unreadByCompany[item.id] || 0) + (callbackByCompany[item.id] || 0)) > 0 && <b>{(unreadByCompany[item.id] || 0) + (callbackByCompany[item.id] || 0)}</b>}</button>)}</div></section>}<section className="summary-row"><button onClick={() => onNavigate("projects")}><span className="metric-icon warning"><Icon name="clock" /></span><span><strong>{attention.length}</strong><small>offene Entscheidungen</small></span></button><button onClick={() => onNavigate("messages")}><span className="metric-icon info"><Icon name="message" /></span><span><strong>{unread.length}</strong><small>ungelesene Nachrichten</small></span></button><button onClick={() => currentUser.type === "internal" ? onNavigate("callbacks") : onNavigate("team")}><span className="metric-icon"><Icon name="phone" /></span><span><strong>{ownCallbacks.length}</strong><small>{currentUser.type === "internal" ? "offene Rückrufe" : "angeforderte Rückrufe"}</small></span></button><button onClick={() => onNavigate("projects")}><span className="metric-icon success"><Icon name="projects" /></span><span><strong>{open.length}</strong><small>laufende Projekte</small></span></button></section><section className="dashboard-focus-grid"><div className="panel focus-panel"><PanelHeader title="Jetzt wichtig" subtitle="Nur Vorgänge, bei denen eine Entscheidung oder Reaktion nötig ist" action="Alle Projekte" onAction={() => onNavigate("projects")} /><div className="focus-list">{attention.length ? attention.slice(0, 5).map((project) => <article key={project.id}><button onClick={() => onOpenProject(project.id)}><span className={classNames("status-dot", project.statusTone)} /><span><small>{project.id} · {project.category}</small><strong>{project.nextAction}</strong><p>{project.title}</p></span><time>{project.due}</time></button>{project.status === "Freigabe erforderlich" && currentUser.rights.approve && <button className="small-action" onClick={() => onApprove(project.id)}>Freigeben</button>}</article>) : <EmptyState title="Nichts offen" text="Derzeit ist keine Entscheidung erforderlich." />}</div></div><div className="panel"><PanelHeader title="Neu eingegangen" subtitle="Nachrichten aus den Projekten" action="Postfach" onAction={() => onNavigate("messages")} /><div className="message-preview-list">{unread.length ? unread.slice(-4).reverse().map((message) => { const sender = getUser(users, message.senderUserId); const project = projects.find((item) => item.id === message.projectId); return <button key={message.id} onClick={() => message.projectId ? onOpenProject(message.projectId) : onNavigate("messages")}><span className="avatar">{sender?.initials || "DK"}</span><span><strong>{sender?.name || "Projektteam"}</strong><small>{project?.title || "Direkte Nachricht"}</small><p>{message.text}</p></span><i /></button>; }) : <EmptyState title="Alles gelesen" text="Keine neue Nachricht wartet auf Sie." />}</div></div></section><section className="panel"><PanelHeader title="Laufende Projekte" subtitle={`${projects.length} sichtbare Projekte bei ${company.shortName}`} action="Alle öffnen" onAction={() => onNavigate("projects")} /><ProjectTable projects={projects.slice(0, 7)} onOpen={onOpenProject} /></section></div>;
 }
 
-function ProjectsView({ projects, users, searchTerm, onSearch, onOpenProject }) {
+
+function ProjectsView({ projects, users, searchTerm, onSearch, onOpenProject, onCreateProject }) {
   const [filter, setFilter] = useState("Alle");
   const filters = ["Alle", "Offen", "Freigabe", "Produktion", "Abgeschlossen"];
-  const filtered = projects.filter((project) => filter === "Alle" || (filter === "Offen" && project.progress < 100) || (filter === "Freigabe" && (project.status.includes("Freigabe") || project.status.includes("Angebot"))) || (filter === "Produktion" && (project.status.includes("Produktion") || project.status.includes("Weiterverarbeitung"))) || (filter === "Abgeschlossen" && project.progress === 100));
-  return <div className="page-stack"><PageHeader eyebrow="Auftragsübersicht" title="Projekte" lead="Öffnen Sie ein Projekt direkt als eigene Seite. Dort stehen Nachrichten, Dateien, Freigaben und die komplette Steuerung zur Verfügung." /><section className="toolbar"><div className="filter-tabs">{filters.map((item) => <button key={item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>{item}</button>)}</div><label className="inline-search"><Icon name="search" size={20} /><input value={searchTerm} onChange={(event) => onSearch(event.target.value)} placeholder="Projekte filtern …" /></label></section><section className="project-card-grid">{filtered.map((project) => { const owners = project.ownerUserIds.map((id) => getUser(users, id)).filter(Boolean); const contact = getUser(users, project.contactUserId); return <article className="project-card" key={project.id}><div className="project-card-top"><span className="project-symbol"><Icon name={project.category.includes("Faltschachtel") || project.category.includes("Verpackung") ? "layers" : "print"} size={32} /></span><span className={classNames("status-badge", project.statusTone)}>{project.status}</span></div><span className="project-meta">{project.id} · {project.category}</span><h2>{project.title}</h2><p>{project.specification}</p><div className="project-progress"><div><span>Fortschritt</span><strong>{project.progress}%</strong></div><i><b style={{ width: `${project.progress}%` }} /></i></div><dl className="card-details"><div><dt>Nächster Schritt</dt><dd>{project.nextAction}</dd></div><div><dt>Liefertermin</dt><dd>{project.delivery}</dd></div><div><dt>Kundenseite</dt><dd>{owners.map((owner) => owner.name).join(", ") || "Teamleitung"}</dd></div><div><dt>druckkultur</dt><dd>{contact?.name || "Projektteam"}</dd></div></dl><button className="card-link" onClick={() => onOpenProject(project.id)}>Projekt vollständig öffnen <Icon name="arrow" size={19} /></button></article>; })}</section>{!filtered.length && <EmptyState title="Keine Projekte gefunden" text="Für diese Auswahl gibt es keine sichtbaren Projekte." />}</div>;
+  const filtered = projects.filter((project) =>
+    filter === "Alle" ||
+    (filter === "Offen" && project.progress < 100) ||
+    (filter === "Freigabe" && (project.status.includes("Freigabe") || project.status.includes("Angebot"))) ||
+    (filter === "Produktion" && (project.status.includes("Produktion") || project.status.includes("Druck") || project.status.includes("Weiterverarbeitung"))) ||
+    (filter === "Abgeschlossen" && project.progress === 100)
+  );
+  return (
+    <div className="page-stack">
+      <div className="page-heading-with-action">
+        <PageHeader
+          eyebrow="Auftragsübersicht"
+          title="Projekte"
+          lead="Jedes Projekt besitzt eine vollständige Arbeitsseite mit Statussteuerung, Nachrichten, Dateien, Freigaben und Zuständigkeiten."
+        />
+        <button className="primary-button create-project-button" onClick={onCreateProject}>
+          <Icon name="plus" size={20} /> Projekt erstellen
+        </button>
+      </div>
+      <section className="toolbar">
+        <div className="filter-tabs">
+          {filters.map((item) => (
+            <button key={item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>{item}</button>
+          ))}
+        </div>
+        <label className="inline-search">
+          <Icon name="search" size={20} />
+          <input value={searchTerm} onChange={(event) => onSearch(event.target.value)} placeholder="Projekte filtern …" />
+        </label>
+      </section>
+      <section className="project-card-grid">
+        {filtered.map((project) => {
+          const owners = project.ownerUserIds.map((id) => getUser(users, id)).filter(Boolean);
+          const contact = getUser(users, project.contactUserId);
+          return (
+            <article className="project-card" key={project.id}>
+              <div className="project-card-top">
+                <span className="project-symbol"><Icon name={project.category.includes("Faltschachtel") || project.category.includes("Verpackung") ? "layers" : "print"} size={32} /></span>
+                <span className={classNames("status-badge", project.statusTone)}>{project.status}</span>
+              </div>
+              <span className="project-meta">{project.id} · {project.category}</span>
+              <h2>{project.title}</h2>
+              <p>{project.specification}</p>
+              <div className="project-progress">
+                <div><span>Fortschritt</span><strong>{project.progress}%</strong></div>
+                <i><b style={{ width: `${project.progress}%` }} /></i>
+              </div>
+              <dl className="card-details">
+                <div><dt>Nächster Schritt</dt><dd>{project.nextAction}</dd></div>
+                <div><dt>Liefertermin</dt><dd>{project.delivery}</dd></div>
+                <div><dt>Kundenseite</dt><dd>{owners.map((owner) => owner.name).join(", ") || "Teamleitung"}</dd></div>
+                <div><dt>druckkultur</dt><dd>{contact?.name || "Projektteam"}</dd></div>
+              </dl>
+              <button className="card-link" onClick={() => onOpenProject(project.id)}>
+                Projekt vollständig öffnen <Icon name="arrow" size={19} />
+              </button>
+            </article>
+          );
+        })}
+      </section>
+      {!filtered.length && <EmptyState title="Keine Projekte gefunden" text="Für diese Auswahl gibt es keine sichtbaren Projekte." />}
+    </div>
+  );
 }
 
 function ProjectDetailView({ project, users, currentUser, messages, documents, onBack, onApprove, onMessage, onMarkRead, onDownload, onUpload, onUpdate }) {
@@ -427,67 +620,811 @@ function ProjectDetailView({ project, users, currentUser, messages, documents, o
   const [uploadOpen, setUploadOpen] = useState(false);
   const contact = getUser(users, project.contactUserId);
   const owners = project.ownerUserIds.map((id) => getUser(users, id)).filter(Boolean);
+  const history = [...(project.statusHistory || [])].reverse();
   useEffect(() => { if (tab === "messages") onMarkRead(); }, [tab]);
-  return <div className="page-stack project-detail-page"><button className="back-link" onClick={onBack}><Icon name="arrow" size={18} /> Zurück zur Projektübersicht</button><section className="project-detail-header"><div><span className="project-meta">{project.id} · {project.category}</span><h1>{project.title}</h1><p>{project.specification}</p></div><div className="project-header-status"><span className={classNames("status-badge", project.statusTone)}>{project.status}</span><strong>{project.progress}%</strong><small>Fortschritt</small></div></section><div className="detail-tabs">{[["overview", "Übersicht"], ["messages", `Nachrichten (${messages.length})`], ["documents", `Dokumente (${documents.length})`]].map(([id, label]) => <button key={id} className={tab === id ? "active" : ""} onClick={() => setTab(id)}>{label}</button>)}</div>{tab === "overview" && <div className="project-detail-grid"><div className="detail-main"><section className={classNames("next-action-card", project.statusTone)}><div className="next-action-icon"><Icon name={project.statusTone === "warning" ? "clock" : "check"} size={27} /></div><div><span>Nächster Schritt</span><h2>{project.nextAction}</h2><p>{project.nextActionDetail}</p>{project.due !== "–" && <strong>Benötigt: {project.due}</strong>}</div>{project.status === "Freigabe erforderlich" && currentUser.rights.approve && <button className="primary-button" onClick={onApprove}>Version freigeben</button>}</section><section className="panel detail-panel"><div className="section-heading"><h2>Projektverlauf</h2><span>{project.progress}% abgeschlossen</span></div><div className="timeline full-timeline">{project.steps.map((step, index) => <div className={classNames("timeline-step", step.state)} key={`${step.label}-${index}`}><i>{step.state === "done" ? <Icon name="check" size={15} /> : index + 1}</i><div><strong>{step.label}</strong><span>{step.date}</span></div></div>)}</div></section><section className="panel detail-panel"><div className="section-heading"><h2>Produkt und Zuständigkeiten</h2></div><dl className="detail-grid"><div><dt>Auflage</dt><dd>{project.quantity}</dd></div><div><dt>Liefertermin</dt><dd>{project.delivery}</dd></div><div className="wide"><dt>Ausführung</dt><dd>{project.specification}</dd></div><div><dt>druckkultur</dt><dd>{contact?.name}</dd></div><div><dt>Kundenseite</dt><dd>{owners.map((owner) => owner.name).join(", ")}</dd></div></dl></section></div><aside className="detail-side">{currentUser.type === "internal" ? <ProjectControlPanel project={project} users={users} onSave={onUpdate} /> : <section className="panel contact-compact"><span className="eyebrow">Persönlicher Ansprechpartner</span><div className="avatar xlarge">{contact?.initials}</div><h2>{contact?.name}</h2><p>{contact?.roleLabel}</p><a className="secondary-button" href={telHref(contact?.phone)}><Icon name="phone" size={18} /> Direkt anrufen</a></section>}</aside></div>}{tab === "messages" && <section className="panel project-communication"><div className="project-message-stream">{[...messages].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)).map((message) => { const sender = getUser(users, message.senderUserId); const own = message.senderUserId === currentUser.id; return <article key={message.id} className={classNames("message-row", own && "own")}>{!own && <span className="avatar">{sender?.initials || "DK"}</span>}<div className="message-bubble"><div className="message-author"><strong>{own ? "Sie" : sender?.name || "Projektteam"}</strong><time>{message.time}</time></div><p>{message.text}</p>{own && <small className="read-receipt"><Icon name={(message.readBy || []).length > 1 ? "check" : "send"} size={15} />{receiptText(message, users, currentUser)}</small>}</div></article>; })}</div><form className="message-composer" onSubmit={(event) => { event.preventDefault(); onMessage(draftMessage); setDraftMessage(""); }}><textarea rows="4" value={draftMessage} onChange={(event) => setDraftMessage(event.target.value)} placeholder="Nachricht zum Projekt schreiben …" /><div><span>Die Nachricht bleibt dauerhaft diesem Projekt zugeordnet.</span><button className="primary-button" type="submit">Senden <Icon name="send" size={18} /></button></div></form></section>}{tab === "documents" && <section className="panel project-documents"><div className="documents-heading"><div><h2>Dateien und Dokumente</h2><p>Hochgeladene Dateien lassen sich in dieser Vorführung tatsächlich wieder herunterladen.</p></div><button className="primary-button" onClick={() => setUploadOpen((value) => !value)}><Icon name="upload" size={19} /> Datei hochladen</button></div>{uploadOpen && <UploadDocumentForm onUpload={async (file, meta) => { await onUpload(file, meta); setUploadOpen(false); }} />}<DocumentList documents={documents} project={project} onDownload={onDownload} /></section>}</div>;
+
+  return (
+    <div className="page-stack project-detail-page">
+      <button className="back-link" onClick={onBack}><Icon name="arrow" size={18} /> Zurück zur Projektübersicht</button>
+      <section className="project-detail-header">
+        <div>
+          <span className="project-meta">{project.id} · {project.category}</span>
+          <h1>{project.title}</h1>
+          <p>{project.specification}</p>
+        </div>
+        <div className="project-header-status">
+          <span className={classNames("status-badge", project.statusTone)}>{project.status}</span>
+          <strong>{project.progress}%</strong>
+          <small>Fortschritt</small>
+        </div>
+      </section>
+      <div className="detail-tabs">
+        {[["overview", "Übersicht"], ["messages", `Nachrichten (${messages.length})`], ["documents", `Dokumente (${documents.length})`]].map(([id, label]) => (
+          <button key={id} className={tab === id ? "active" : ""} onClick={() => setTab(id)}>{label}</button>
+        ))}
+      </div>
+
+      {tab === "overview" && (
+        <div className="project-detail-grid">
+          <div className="detail-main">
+            <section className={classNames("next-action-card", project.statusTone)}>
+              <div className="next-action-icon"><Icon name={project.statusTone === "warning" ? "clock" : "check"} size={27} /></div>
+              <div>
+                <span>Nächster Schritt</span>
+                <h2>{project.nextAction}</h2>
+                <p>{project.nextActionDetail}</p>
+                {project.due !== "–" && <strong>Benötigt: {project.due}</strong>}
+              </div>
+              {project.status === "Freigabe erforderlich" && currentUser.rights.approve && (
+                <button className="primary-button" onClick={onApprove}>Version freigeben</button>
+              )}
+            </section>
+
+            <section className="panel detail-panel">
+              <div className="section-heading"><h2>Projektverlauf</h2><span>{project.progress}% abgeschlossen</span></div>
+              <div className="timeline full-timeline">
+                {project.steps.map((step, index) => (
+                  <div className={classNames("timeline-step", step.state)} key={`${step.label}-${index}`}>
+                    <i>{step.state === "done" ? <Icon name="check" size={15} /> : index + 1}</i>
+                    <div><strong>{step.label}</strong><span>{step.date}</span></div>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="panel detail-panel">
+              <div className="section-heading"><h2>Statusprotokoll</h2><span>Nachvollziehbar für beide Seiten</span></div>
+              <div className="status-history">
+                {history.length ? history.map((entry) => {
+                  const person = getUser(users, entry.byUserId);
+                  return (
+                    <article key={entry.id}>
+                      <i />
+                      <div>
+                        <strong>{entry.status}</strong>
+                        <p>{entry.note || "Status wurde aktualisiert."}</p>
+                        <small>{entry.at} · {person?.name || "Projektteam"}</small>
+                      </div>
+                    </article>
+                  );
+                }) : <p className="muted-copy">Weitere Statusänderungen werden ab jetzt automatisch protokolliert.</p>}
+              </div>
+            </section>
+
+            <section className="panel detail-panel">
+              <div className="section-heading"><h2>Produkt und Zuständigkeiten</h2></div>
+              <dl className="detail-grid">
+                <div><dt>Auflage</dt><dd>{project.quantity}</dd></div>
+                <div><dt>Liefertermin</dt><dd>{project.delivery}</dd></div>
+                {project.customerOrderNumber && <div><dt>Bestellnummer</dt><dd>{project.customerOrderNumber}</dd></div>}
+                {project.format && <div><dt>Format</dt><dd>{project.format}</dd></div>}
+                <div className="wide"><dt>Ausführung</dt><dd>{project.specification}</dd></div>
+                <div><dt>druckkultur</dt><dd>{contact?.name}</dd></div>
+                <div><dt>Kundenseite</dt><dd>{owners.map((owner) => owner.name).join(", ") || "Teamleitung"}</dd></div>
+              </dl>
+            </section>
+          </div>
+          <aside className="detail-side">
+            {currentUser.type === "internal" ? (
+              <ProjectControlPanel project={project} users={users} onSave={onUpdate} />
+            ) : (
+              <section className="panel contact-compact">
+                <span className="eyebrow">Persönlicher Ansprechpartner</span>
+                <div className="avatar xlarge">{contact?.initials}</div>
+                <h2>{contact?.name}</h2>
+                <p>{contact?.roleLabel}</p>
+                <a className="secondary-button" href={telHref(contact?.phone)}><Icon name="phone" size={18} /> Direkt anrufen</a>
+              </section>
+            )}
+          </aside>
+        </div>
+      )}
+
+      {tab === "messages" && (
+        <section className="panel project-communication">
+          <div className="project-message-stream">
+            {[...messages].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)).map((message) => {
+              const sender = getUser(users, message.senderUserId);
+              const own = message.senderUserId === currentUser.id;
+              return (
+                <article key={message.id} className={classNames("message-row", own && "own")}>
+                  {!own && <span className="avatar">{sender?.initials || "DK"}</span>}
+                  <div className="message-bubble">
+                    <div className="message-author"><strong>{own ? "Sie" : sender?.name || "Projektteam"}</strong><time>{message.time}</time></div>
+                    <p>{message.text}</p>
+                    {own && <small className="read-receipt"><Icon name={(message.readBy || []).length > 1 ? "check" : "send"} size={15} />{receiptText(message, users, currentUser)}</small>}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+          <form className="message-composer" onSubmit={(event) => { event.preventDefault(); onMessage(draftMessage); setDraftMessage(""); }}>
+            <textarea rows="4" value={draftMessage} onChange={(event) => setDraftMessage(event.target.value)} placeholder="Nachricht zum Projekt schreiben …" />
+            <div><span>Die Nachricht bleibt dauerhaft diesem Projekt zugeordnet.</span><button className="primary-button" type="submit">Senden <Icon name="send" size={18} /></button></div>
+          </form>
+        </section>
+      )}
+
+      {tab === "documents" && (
+        <section className="panel project-documents">
+          <div className="documents-heading">
+            <div><h2>Dateien und Dokumente</h2><p>Sie können jederzeit weitere Dokumente hochladen und die Dokumentart eindeutig auswählen.</p></div>
+            <button className="primary-button" onClick={() => setUploadOpen((value) => !value)}><Icon name="upload" size={19} /> Dokument hochladen</button>
+          </div>
+          {uploadOpen && <UploadDocumentForm currentUser={currentUser} onUpload={async (file, meta) => { await onUpload(file, meta); setUploadOpen(false); }} />}
+          <DocumentList documents={documents} project={project} onDownload={onDownload} />
+        </section>
+      )}
+    </div>
+  );
 }
 
 function ProjectControlPanel({ project, users, onSave }) {
   const customerUsers = users.filter((user) => user.type === "customer" && user.companyId === project.companyId);
   const internalUsers = users.filter((user) => user.type === "internal" && user.companyIds.includes(project.companyId));
-  const [draft, setDraft] = useState({ status: project.status, progress: project.progress, nextAction: project.nextAction, nextActionDetail: project.nextActionDetail, due: project.due, delivery: project.delivery, contactUserId: project.contactUserId, ownerUserIds: project.ownerUserIds });
-  useEffect(() => setDraft({ status: project.status, progress: project.progress, nextAction: project.nextAction, nextActionDetail: project.nextActionDetail, due: project.due, delivery: project.delivery, contactUserId: project.contactUserId, ownerUserIds: project.ownerUserIds }), [project]);
-  function changeStatus(status) { const preset = statusPresets[status]; setDraft((current) => ({ ...current, status, progress: preset.progress, nextAction: preset.next, nextActionDetail: preset.detail, due: status.includes("Freigabe") || status.includes("fehlen") ? "Bitte zeitnah" : "–" })); }
-  function toggleOwner(id) { setDraft((current) => ({ ...current, ownerUserIds: current.ownerUserIds.includes(id) ? current.ownerUserIds.filter((item) => item !== id) : [...current.ownerUserIds, id] })); }
-  return <section className="panel project-control"><div className="control-heading"><span className="eyebrow">Mitarbeiterbereich</span><h2>Projekt steuern</h2><p>Änderungen sind nach dem Speichern sofort für den Kunden sichtbar.</p></div><label className="form-field"><span>Status</span><select value={draft.status} onChange={(event) => changeStatus(event.target.value)}>{Object.keys(statusPresets).map((status) => <option key={status}>{status}</option>)}</select></label><label className="form-field"><span>Fortschritt: {draft.progress}%</span><input type="range" min="0" max="100" value={draft.progress} onChange={(event) => setDraft((current) => ({ ...current, progress: event.target.value }))} /></label><label className="form-field"><span>Nächster Schritt</span><input value={draft.nextAction} onChange={(event) => setDraft((current) => ({ ...current, nextAction: event.target.value }))} /></label><label className="form-field"><span>Erklärung für den Kunden</span><textarea rows="4" value={draft.nextActionDetail} onChange={(event) => setDraft((current) => ({ ...current, nextActionDetail: event.target.value }))} /></label><div className="control-two"><label className="form-field"><span>Benötigt bis</span><input value={draft.due} onChange={(event) => setDraft((current) => ({ ...current, due: event.target.value }))} /></label><label className="form-field"><span>Liefertermin</span><input value={draft.delivery} onChange={(event) => setDraft((current) => ({ ...current, delivery: event.target.value }))} /></label></div><label className="form-field"><span>Zuständig bei druckkultur</span><select value={draft.contactUserId} onChange={(event) => setDraft((current) => ({ ...current, contactUserId: event.target.value }))}>{internalUsers.map((user) => <option value={user.id} key={user.id}>{user.name}</option>)}</select></label><fieldset className="owner-fieldset"><legend>Sichtbar und zugeordnet beim Kunden</legend>{customerUsers.map((user) => <label key={user.id}><input type="checkbox" checked={draft.ownerUserIds.includes(user.id)} onChange={() => toggleOwner(user.id)} /><span>{user.name}<small>{user.roleLabel}</small></span></label>)}</fieldset><button className="primary-button wide-button" onClick={() => onSave(draft)}>Projekt aktualisieren</button></section>;
+  const [customStatus, setCustomStatus] = useState("");
+  const [draft, setDraft] = useState({
+    status: project.status,
+    progress: project.progress,
+    nextAction: project.nextAction,
+    nextActionDetail: project.nextActionDetail,
+    statusNote: "",
+    due: project.due,
+    delivery: project.delivery,
+    contactUserId: project.contactUserId,
+    ownerUserIds: project.ownerUserIds
+  });
+
+  useEffect(() => setDraft({
+    status: project.status,
+    progress: project.progress,
+    nextAction: project.nextAction,
+    nextActionDetail: project.nextActionDetail,
+    statusNote: "",
+    due: project.due,
+    delivery: project.delivery,
+    contactUserId: project.contactUserId,
+    ownerUserIds: project.ownerUserIds
+  }), [project]);
+
+  function changeStatus(status) {
+    const preset = statusPresets[status];
+    setDraft((current) => ({
+      ...current,
+      status,
+      progress: preset?.progress ?? current.progress,
+      nextAction: preset?.next ?? current.nextAction,
+      nextActionDetail: preset?.detail ?? current.nextActionDetail,
+      due: status.includes("Freigabe") || status.includes("fehlen") || status.includes("erforderlich") ? "Bitte zeitnah" : current.due
+    }));
+  }
+
+  function applyCustomStatus() {
+    const value = customStatus.trim();
+    if (!value) return;
+    setDraft((current) => ({
+      ...current,
+      status: value,
+      statusNote: `Individueller Status: ${value}`
+    }));
+    setCustomStatus("");
+  }
+
+  function toggleOwner(id) {
+    setDraft((current) => ({
+      ...current,
+      ownerUserIds: current.ownerUserIds.includes(id)
+        ? current.ownerUserIds.filter((item) => item !== id)
+        : [...current.ownerUserIds, id]
+    }));
+  }
+
+  return (
+    <section className="panel project-control">
+      <div className="control-heading">
+        <span className="eyebrow">Mitarbeiterbereich</span>
+        <h2>Projekt steuern</h2>
+        <p>Status, nächster Schritt und Zuständigkeiten werden sofort in der Kundensicht übernommen.</p>
+      </div>
+
+      <label className="form-field">
+        <span>Projektstatus auswählen</span>
+        <select value={statusPresets[draft.status] ? draft.status : ""} onChange={(event) => changeStatus(event.target.value)}>
+          {!statusPresets[draft.status] && <option value="">Individueller Status: {draft.status}</option>}
+          {Object.keys(statusPresets).map((status) => <option value={status} key={status}>{status}</option>)}
+        </select>
+      </label>
+
+      <div className="custom-status-entry">
+        <label className="form-field">
+          <span>Eigenen Status vergeben</span>
+          <input value={customStatus} onChange={(event) => setCustomStatus(event.target.value)} placeholder="z. B. Kundentermin vereinbart" />
+        </label>
+        <button className="secondary-button" type="button" onClick={applyCustomStatus}>Status übernehmen</button>
+      </div>
+
+      <div className="selected-status-preview">
+        <span>Wird gespeichert als</span>
+        <strong>{draft.status}</strong>
+      </div>
+
+      <label className="form-field">
+        <span>Fortschritt: {draft.progress}%</span>
+        <input type="range" min="0" max="100" value={draft.progress} onChange={(event) => setDraft((current) => ({ ...current, progress: event.target.value }))} />
+      </label>
+      <label className="form-field">
+        <span>Nächster Schritt</span>
+        <input value={draft.nextAction} onChange={(event) => setDraft((current) => ({ ...current, nextAction: event.target.value }))} />
+      </label>
+      <label className="form-field">
+        <span>Erklärung für den Kunden</span>
+        <textarea rows="4" value={draft.nextActionDetail} onChange={(event) => setDraft((current) => ({ ...current, nextActionDetail: event.target.value }))} />
+      </label>
+      <label className="form-field">
+        <span>Interne Notiz zur Statusänderung</span>
+        <textarea rows="3" value={draft.statusNote} onChange={(event) => setDraft((current) => ({ ...current, statusNote: event.target.value }))} placeholder="Optional – erscheint im Statusprotokoll" />
+      </label>
+      <div className="control-two">
+        <label className="form-field"><span>Benötigt bis</span><input value={draft.due} onChange={(event) => setDraft((current) => ({ ...current, due: event.target.value }))} /></label>
+        <label className="form-field"><span>Liefertermin</span><input value={draft.delivery} onChange={(event) => setDraft((current) => ({ ...current, delivery: event.target.value }))} /></label>
+      </div>
+      <label className="form-field">
+        <span>Zuständig bei druckkultur</span>
+        <select value={draft.contactUserId} onChange={(event) => setDraft((current) => ({ ...current, contactUserId: event.target.value }))}>
+          {internalUsers.map((user) => <option value={user.id} key={user.id}>{user.name}</option>)}
+        </select>
+      </label>
+      <fieldset className="owner-fieldset">
+        <legend>Sichtbar und zugeordnet beim Kunden</legend>
+        {customerUsers.map((user) => (
+          <label key={user.id}>
+            <input type="checkbox" checked={draft.ownerUserIds.includes(user.id)} onChange={() => toggleOwner(user.id)} />
+            <span>{user.name}<small>{user.roleLabel}</small></span>
+          </label>
+        ))}
+      </fieldset>
+      <button className="primary-button wide-button" onClick={() => onSave(draft)}>Status und Projekt speichern</button>
+    </section>
+  );
 }
 
 function MessagesView({ messages, projects, users, company, currentUser, initialTargetUserId, onTargetUsed, onSendProject, onSendDirect, onMarkRead }) {
+  const possibleContacts = users.filter((user) =>
+    currentUser.type === "internal"
+      ? user.type === "customer" && user.companyId === company.id
+      : user.type === "internal" && company.assignedTeam.includes(user.id)
+  );
   const directMessages = messages.filter((message) => message.threadType === "direct");
   const directPartners = new Map();
-  directMessages.forEach((message) => { const partnerId = (message.participantUserIds || []).find((id) => id !== currentUser.id); if (partnerId) directPartners.set(partnerId, getUser(users, partnerId)); });
-  if (initialTargetUserId) directPartners.set(initialTargetUserId, getUser(users, initialTargetUserId));
-  const projectThreads = projects.map((project) => ({ id: `project:${project.id}`, type: "project", project, title: project.title, subtitle: project.id }));
-  const directThreads = [...directPartners.entries()].filter(([, user]) => user).map(([id, user]) => ({ id: directThreadId(company.id, currentUser.id, id), type: "direct", partnerId: id, title: user.name, subtitle: `Direkter Kontakt · ${user.roleLabel}` }));
+  directMessages.forEach((message) => {
+    const partnerId = (message.participantUserIds || []).find((id) => id !== currentUser.id);
+    if (partnerId) directPartners.set(partnerId, getUser(users, partnerId));
+  });
+  possibleContacts.forEach((user) => directPartners.set(user.id, user));
+
+  const projectThreads = projects.map((project) => ({
+    id: `project:${project.id}`,
+    type: "project",
+    project,
+    title: project.title,
+    subtitle: project.id
+  }));
+  const directThreads = [...directPartners.entries()].filter(([, user]) => user).map(([id, user]) => ({
+    id: directThreadId(company.id, currentUser.id, id),
+    type: "direct",
+    partnerId: id,
+    title: user.name,
+    subtitle: `Direkter Kontakt · ${user.roleLabel}`
+  }));
   const threads = [...directThreads, ...projectThreads];
   const preferred = initialTargetUserId ? directThreadId(company.id, currentUser.id, initialTargetUserId) : null;
-  const [activeThreadId, setActiveThreadId] = useState(preferred || threads[0]?.id || null);
+
+  const [activeThreadId, setActiveThreadId] = useState(null);
   const [draft, setDraft] = useState("");
-  useEffect(() => { if (preferred) { setActiveThreadId(preferred); onTargetUsed(); } }, [preferred]);
-  useEffect(() => { if (activeThreadId) onMarkRead(activeThreadId); }, [activeThreadId]);
-  const active = threads.find((thread) => thread.id === activeThreadId) || threads[0];
-  const threadMessages = messages.filter((message) => threadIdForMessage(message) === active?.id).sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-  function send(event) { event.preventDefault(); if (!draft.trim() || !active) return; if (active.type === "project") onSendProject(active.project.id, draft); else onSendDirect(active.partnerId, draft); setDraft(""); }
-  return <div className="page-stack"><PageHeader eyebrow="Direkter Draht" title="Nachrichten" lead="Projektbezogene Unterhaltungen und direkte Gespräche mit festen Ansprechpartnern – inklusive Lesestatus." /><section className="messages-layout"><aside className="thread-list"><header><strong>Unterhaltungen</strong><span>{threads.length}</span></header>{threads.map((thread) => { const list = messages.filter((message) => threadIdForMessage(message) === thread.id); const last = list[list.length - 1]; const unread = list.filter((message) => message.senderUserId !== currentUser.id && !(message.readBy || []).includes(currentUser.id)).length; return <button key={thread.id} className={active?.id === thread.id ? "active" : ""} onClick={() => setActiveThreadId(thread.id)}><span className="thread-icon"><Icon name={thread.type === "direct" ? "users" : "projects"} size={21} /></span><span><strong>{thread.title}</strong><small>{thread.subtitle}</small><p>{last?.text || "Neue Unterhaltung beginnen"}</p></span>{unread > 0 && <b className="count-badge">{unread}</b>}</button>; })}</aside><div className="conversation-panel">{active ? <><header className="conversation-header"><div><span>{active.subtitle}</span><h2>{active.title}</h2></div>{active.type === "direct" && <span className="status-badge success">Persönlicher Kontakt</span>}</header><div className="message-stream">{threadMessages.map((message) => { const sender = getUser(users, message.senderUserId); const own = message.senderUserId === currentUser.id; return <article key={message.id} className={classNames("message-row", own && "own")}>{!own && <span className="avatar">{sender?.initials || "DK"}</span>}<div className="message-bubble"><div className="message-author"><strong>{own ? "Sie" : sender?.name || "Projektteam"}</strong><time>{message.time}</time></div><p>{message.text}</p>{own && <small className="read-receipt"><Icon name={(message.readBy || []).length > 1 ? "check" : "send"} size={15} />{receiptText(message, users, currentUser)}</small>}</div></article>; })}{!threadMessages.length && <EmptyState title="Direkte Unterhaltung" text="Schreiben Sie die erste Nachricht. Sie erscheint beim gewählten Ansprechpartner." />}</div><form className="message-composer" onSubmit={send}><textarea rows="4" value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={active.type === "direct" ? `Nachricht an ${active.title} …` : "Nachricht zum Projekt …"} /><div><span>{active.type === "direct" ? "Persönliche Nachricht an den gewählten Kontakt." : "Dauerhaft dem Projekt zugeordnet."}</span><button className="primary-button" type="submit">Senden <Icon name="send" size={18} /></button></div></form></> : <EmptyState title="Keine Unterhaltung" text="Wählen Sie einen Kontakt oder ein Projekt." />}</div></section></div>;
+  const [newMessageOpen, setNewMessageOpen] = useState(false);
+  const [newType, setNewType] = useState("direct");
+  const [newTargetId, setNewTargetId] = useState("");
+
+  useEffect(() => {
+    setActiveThreadId(null);
+    setDraft("");
+    setNewMessageOpen(false);
+  }, [company.id]);
+
+  useEffect(() => {
+    if (preferred) {
+      setActiveThreadId(preferred);
+      onTargetUsed();
+    }
+  }, [preferred]);
+
+  useEffect(() => {
+    if (activeThreadId) onMarkRead(activeThreadId);
+  }, [activeThreadId]);
+
+  const active = threads.find((thread) => thread.id === activeThreadId) || null;
+  const threadMessages = active
+    ? messages.filter((message) => threadIdForMessage(message) === active.id).sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+    : [];
+
+  function beginNewMessage() {
+    setNewMessageOpen(true);
+    setActiveThreadId(null);
+    setNewType("direct");
+    setNewTargetId(possibleContacts[0]?.id || "");
+  }
+
+  function openSelectedThread() {
+    if (!newTargetId) return;
+    const id = newType === "project"
+      ? `project:${newTargetId}`
+      : directThreadId(company.id, currentUser.id, newTargetId);
+    setActiveThreadId(id);
+    setNewMessageOpen(false);
+    setDraft("");
+  }
+
+  function send(event) {
+    event.preventDefault();
+    if (!draft.trim() || !active) return;
+    if (active.type === "project") onSendProject(active.project.id, draft);
+    else onSendDirect(active.partnerId, draft);
+    setDraft("");
+  }
+
+  return (
+    <div className="page-stack">
+      <div className="page-heading-with-action">
+        <PageHeader
+          eyebrow="Direkter Draht"
+          title="Nachrichten"
+          lead="Keine Unterhaltung wird automatisch geöffnet. Wählen Sie bewusst ein Projekt oder starten Sie eine neue persönliche Nachricht."
+        />
+        <button className="primary-button create-project-button" onClick={beginNewMessage}>
+          <Icon name="plus" size={20} /> Neue Nachricht
+        </button>
+      </div>
+
+      {newMessageOpen && (
+        <section className="panel new-message-panel">
+          <div>
+            <span className="eyebrow">Neue Unterhaltung</span>
+            <h2>Wem möchten Sie schreiben?</h2>
+          </div>
+          <div className="new-message-fields">
+            <label className="form-field">
+              <span>Art der Nachricht</span>
+              <select value={newType} onChange={(event) => {
+                const value = event.target.value;
+                setNewType(value);
+                setNewTargetId(value === "direct" ? possibleContacts[0]?.id || "" : projects[0]?.id || "");
+              }}>
+                <option value="direct">Direkte Nachricht an eine Person</option>
+                <option value="project">Nachricht zu einem Projekt</option>
+              </select>
+            </label>
+            <label className="form-field">
+              <span>{newType === "direct" ? "Empfänger" : "Projekt"}</span>
+              <select value={newTargetId} onChange={(event) => setNewTargetId(event.target.value)}>
+                {newType === "direct"
+                  ? possibleContacts.map((person) => <option key={person.id} value={person.id}>{person.name} · {person.roleLabel}</option>)
+                  : projects.map((project) => <option key={project.id} value={project.id}>{project.id} · {project.title}</option>)}
+              </select>
+            </label>
+          </div>
+          <div className="new-message-actions">
+            <button className="ghost-button" onClick={() => setNewMessageOpen(false)}>Abbrechen</button>
+            <button className="primary-button" onClick={openSelectedThread} disabled={!newTargetId}>Unterhaltung öffnen</button>
+          </div>
+        </section>
+      )}
+
+      <section className="messages-layout">
+        <aside className="thread-list">
+          <header><strong>Unterhaltungen</strong><span>{threads.length}</span></header>
+          {threads.map((thread) => {
+            const list = messages.filter((message) => threadIdForMessage(message) === thread.id);
+            const last = list[list.length - 1];
+            const unread = list.filter((message) => message.senderUserId !== currentUser.id && !(message.readBy || []).includes(currentUser.id)).length;
+            return (
+              <button key={thread.id} className={active?.id === thread.id ? "active" : ""} onClick={() => setActiveThreadId(thread.id)}>
+                <span className="thread-icon"><Icon name={thread.type === "direct" ? "users" : "projects"} size={21} /></span>
+                <span>
+                  <strong>{thread.title}</strong>
+                  <small>{thread.subtitle}</small>
+                  <p>{last?.text || "Noch keine Nachricht"}</p>
+                </span>
+                {unread > 0 && <b className="count-badge">{unread}</b>}
+              </button>
+            );
+          })}
+        </aside>
+
+        <div className="conversation-panel">
+          {active ? (
+            <>
+              <header className="conversation-header">
+                <div><span>{active.subtitle}</span><h2>{active.title}</h2></div>
+                {active.type === "direct" && <span className="status-badge success">Persönlicher Kontakt</span>}
+              </header>
+              <div className="message-stream">
+                {threadMessages.map((message) => {
+                  const sender = getUser(users, message.senderUserId);
+                  const own = message.senderUserId === currentUser.id;
+                  return (
+                    <article key={message.id} className={classNames("message-row", own && "own")}>
+                      {!own && <span className="avatar">{sender?.initials || "DK"}</span>}
+                      <div className="message-bubble">
+                        <div className="message-author"><strong>{own ? "Sie" : sender?.name || "Projektteam"}</strong><time>{message.time}</time></div>
+                        <p>{message.text}</p>
+                        {own && <small className="read-receipt"><Icon name={(message.readBy || []).length > 1 ? "check" : "send"} size={15} />{receiptText(message, users, currentUser)}</small>}
+                      </div>
+                    </article>
+                  );
+                })}
+                {!threadMessages.length && <EmptyState title="Neue Unterhaltung" text="Schreiben Sie die erste Nachricht. Sie wird dem gewählten Kontakt oder Projekt zugeordnet." />}
+              </div>
+              <form className="message-composer" onSubmit={send}>
+                <textarea rows="4" value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={active.type === "direct" ? `Nachricht an ${active.title} …` : "Nachricht zum Projekt …"} />
+                <div>
+                  <span>{active.type === "direct" ? "Persönliche Nachricht an den gewählten Kontakt." : "Dauerhaft dem Projekt zugeordnet."}</span>
+                  <button className="primary-button" type="submit">Senden <Icon name="send" size={18} /></button>
+                </div>
+              </form>
+            </>
+          ) : (
+            <div className="conversation-empty">
+              <span className="conversation-empty-icon"><Icon name="message" size={34} /></span>
+              <h2>Keine Nachricht ausgewählt</h2>
+              <p>Öffnen Sie links eine bestehende Unterhaltung oder beginnen Sie über „Neue Nachricht“ ein neues Gespräch.</p>
+              <button className="primary-button" onClick={beginNewMessage}><Icon name="plus" size={18} /> Neue Nachricht</button>
+            </div>
+          )}
+        </div>
+      </section>
+    </div>
+  );
 }
 
-function DocumentsView({ documents, projects, onDownload, onUpload }) {
+function DocumentsView({ documents, projects, currentUser, onDownload, onUpload }) {
   const [filter, setFilter] = useState("Alle");
   const [uploadOpen, setUploadOpen] = useState(false);
   const [projectId, setProjectId] = useState(projects[0]?.id || "");
   const types = ["Alle", ...new Set(documents.map((document) => document.type))];
   const filtered = documents.filter((document) => filter === "Alle" || document.type === filter);
-  return <div className="page-stack"><PageHeader eyebrow="Dateien statt E-Mail-Suche" title="Dokumente" lead="Originaldateien können hochgeladen, einem Projekt zugeordnet und im gleichen Browser wieder heruntergeladen werden." /><section className="documents-toolbar"><div className="filter-tabs">{types.map((type) => <button key={type} className={filter === type ? "active" : ""} onClick={() => setFilter(type)}>{type}</button>)}</div><button className="primary-button" onClick={() => setUploadOpen((value) => !value)}><Icon name="upload" size={19} /> Datei hochladen</button></section>{uploadOpen && <section className="panel upload-global"><label className="form-field"><span>Projekt</span><select value={projectId} onChange={(event) => setProjectId(event.target.value)}>{projects.map((project) => <option key={project.id} value={project.id}>{project.id} · {project.title}</option>)}</select></label><UploadDocumentForm onUpload={async (file, meta) => { await onUpload(projectId, file, meta); setUploadOpen(false); }} /></section>}<section className="document-grid">{filtered.map((document) => { const project = projects.find((item) => item.id === document.projectId); return <DocumentCard key={document.id} document={document} project={project} onDownload={() => onDownload(document, project)} />; })}</section>{!filtered.length && <EmptyState title="Keine Dokumente" text="Für diesen Filter sind keine Dokumente sichtbar." />}</div>;
+
+  useEffect(() => {
+    if (!projects.some((project) => project.id === projectId)) setProjectId(projects[0]?.id || "");
+  }, [projects, projectId]);
+
+  return (
+    <div className="page-stack">
+      <PageHeader
+        eyebrow="Dateien statt E-Mail-Suche"
+        title="Dokumente"
+        lead="Dokumente können jederzeit hochgeladen, eindeutig klassifiziert und dem richtigen Projekt zugeordnet werden."
+      />
+      <section className="documents-toolbar">
+        <div className="filter-tabs">
+          {types.map((type) => <button key={type} className={filter === type ? "active" : ""} onClick={() => setFilter(type)}>{type}</button>)}
+        </div>
+        <button className="primary-button" onClick={() => setUploadOpen((value) => !value)}>
+          <Icon name="upload" size={19} /> Dokument hochladen
+        </button>
+      </section>
+      {uploadOpen && (
+        <section className="panel upload-global">
+          <label className="form-field">
+            <span>Projekt</span>
+            <select value={projectId} onChange={(event) => setProjectId(event.target.value)}>
+              {projects.map((project) => <option key={project.id} value={project.id}>{project.id} · {project.title}</option>)}
+            </select>
+          </label>
+          <UploadDocumentForm
+            currentUser={currentUser}
+            onUpload={async (file, meta) => {
+              await onUpload(projectId, file, meta);
+              setUploadOpen(false);
+            }}
+          />
+        </section>
+      )}
+      <section className="document-grid">
+        {filtered.map((document) => {
+          const project = projects.find((item) => item.id === document.projectId);
+          return <DocumentCard key={document.id} document={document} project={project} onDownload={() => onDownload(document, project)} />;
+        })}
+      </section>
+      {!filtered.length && <EmptyState title="Keine Dokumente" text="Für diesen Filter sind keine Dokumente sichtbar." />}
+    </div>
+  );
 }
-function UploadDocumentForm({ onUpload }) {
+
+function UploadDocumentForm({ currentUser, onUpload, defaultType = "" }) {
+  const types = documentTypesFor(currentUser);
   const [file, setFile] = useState(null);
   const [title, setTitle] = useState("");
-  const [type, setType] = useState("Kundendatei");
-  return <form className="upload-document-form" onSubmit={async (event) => { event.preventDefault(); if (!file) return; await onUpload(file, { title: title || file.name, type }); setFile(null); setTitle(""); }}><label className="form-field"><span>Dokumentart</span><select value={type} onChange={(event) => setType(event.target.value)}><option>Kundendatei</option><option>Druckdaten</option><option>Freigabe-PDF</option><option>Stanzzeichnung</option><option>Beratung</option><option>Sonstiges</option></select></label><label className="form-field"><span>Anzeigename</span><input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Optional – sonst Dateiname" /></label><label className="file-picker"><Icon name="upload" size={26} /><span><strong>{file?.name || "Datei auswählen"}</strong><small>{file ? formatBytes(file.size) : "PDF, Bild, Office-Datei oder ZIP · bis 20 MB"}</small></span><input type="file" onChange={(event) => setFile(event.target.files?.[0] || null)} /></label><button className="primary-button" type="submit" disabled={!file}>Jetzt hochladen</button></form>;
+  const [type, setType] = useState(defaultType && types.includes(defaultType) ? defaultType : types[0]);
+
+  useEffect(() => {
+    const next = defaultType && types.includes(defaultType) ? defaultType : types[0];
+    setType(next);
+  }, [currentUser?.type, defaultType]);
+
+  return (
+    <form className="upload-document-form" onSubmit={async (event) => {
+      event.preventDefault();
+      if (!file) return;
+      await onUpload(file, { title: title || file.name, type });
+      setFile(null);
+      setTitle("");
+    }}>
+      <label className="form-field">
+        <span>Dokumentart</span>
+        <select value={type} onChange={(event) => setType(event.target.value)}>
+          {types.map((item) => <option key={item}>{item}</option>)}
+        </select>
+      </label>
+      <label className="form-field">
+        <span>Anzeigename</span>
+        <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Optional – sonst Dateiname" />
+      </label>
+      <label className="file-picker">
+        <Icon name="upload" size={26} />
+        <span>
+          <strong>{file?.name || "Datei auswählen"}</strong>
+          <small>{file ? formatBytes(file.size) : "PDF, Bild, Office-Datei oder ZIP · bis 20 MB"}</small>
+        </span>
+        <input type="file" onChange={(event) => setFile(event.target.files?.[0] || null)} />
+      </label>
+      <button className="primary-button" type="submit" disabled={!file}>Als {type} hochladen</button>
+    </form>
+  );
 }
 function DocumentList({ documents, project, onDownload }) { return <div className="drawer-document-list">{documents.map((document) => <article key={document.id}><span className="file-icon"><Icon name="document" size={23} /></span><div><strong>{document.title}</strong><span>{document.type} · {document.date} · {document.size}{document.blobKey ? " · hochgeladen" : ""}</span></div><button className="icon-button" onClick={() => onDownload(document)}><Icon name="download" size={20} /></button></article>)}</div>; }
 function DocumentCard({ document, project, onDownload }) { return <article className="document-card"><span className="document-icon"><Icon name={document.type.includes("Freigabe") ? "fileCheck" : "document"} size={28} /></span><div><span>{document.type}</span><h2>{document.title}</h2><p>{project?.title}</p><small>{document.date} · {document.size}{document.blobKey ? " · Originaldatei" : ""}</small></div><button className="icon-button" onClick={onDownload}><Icon name="download" size={21} /></button></article>; }
 
-function RequestView({ company, onCreate }) {
-  const [step, setStep] = useState(1);
-  const [request, setRequest] = useState(emptyRequest);
-  const [file, setFile] = useState(null);
-  const fileRef = useRef(null);
-  const kinds = ["Printprodukt", "Mailing", "Faltschachtel / Verpackung", "Veredelung", "Sonderproduktion", "Noch nicht sicher"];
-  function update(key, value) { setRequest((current) => ({ ...current, [key]: value })); }
-  async function submit(event) { event.preventDefault(); if (step < 3) setStep((current) => current + 1); else { await onCreate(request, file); setRequest(emptyRequest); setFile(null); setStep(1); } }
-  return <div className="page-stack"><PageHeader eyebrow="Kein Warenkorb, sondern persönliche Beratung" title="Neues Projekt besprechen" lead={`Eine Idee, ein Muster oder eine grobe Beschreibung reicht. ${company.name} erhält danach einen eigenen Projektraum.`} /><div className="request-layout"><section className="panel request-panel"><div className="stepper">{[1, 2, 3].map((item) => <span key={item} className={step >= item ? "active" : ""}><i>{step > item ? <Icon name="check" size={15} /> : item}</i><b>{item === 1 ? "Vorhaben" : item === 2 ? "Details" : "Datei & Übergabe"}</b></span>)}</div><form onSubmit={submit}>{step === 1 && <div className="form-step"><h2>Was möchten Sie umsetzen?</h2><p>Wählen Sie nur die grobe Richtung. Die technische Lösung klären wir gemeinsam.</p><div className="kind-grid">{kinds.map((kind) => <button type="button" key={kind} className={request.kind === kind ? "selected" : ""} onClick={() => update("kind", kind)}><Icon name={kind.includes("Verpackung") ? "layers" : "print"} size={26} /><span>{kind}</span>{request.kind === kind && <Icon name="check" size={18} />}</button>)}</div></div>}{step === 2 && <div className="form-step"><h2>Was wissen Sie bereits?</h2><p>Ungefähre Angaben genügen.</p><div className="form-grid"><label className="form-field wide"><span>Arbeitstitel</span><input value={request.title} onChange={(event) => update("title", event.target.value)} placeholder="z. B. neue Geschenkverpackung" /></label><label className="form-field wide"><span>Idee und gewünschte Wirkung</span><textarea rows="6" value={request.description} onChange={(event) => update("description", event.target.value)} placeholder="Was soll entstehen und was ist Ihnen dabei wichtig?" /></label><label className="form-field"><span>Ungefähre Menge</span><input value={request.quantity} onChange={(event) => update("quantity", event.target.value)} placeholder="z. B. 5.000 Stück" /></label><label className="form-field"><span>Wunschtermin</span><input type="date" value={request.deadline} onChange={(event) => update("deadline", event.target.value)} /></label></div></div>}{step === 3 && <div className="form-step"><h2>Datei hinzufügen und übergeben</h2><p>Die ausgewählte Datei wird tatsächlich im Browser gespeichert und erscheint danach im neuen Projekt.</p><button className="upload-zone" type="button" onClick={() => fileRef.current?.click()}><Icon name="upload" size={34} /><strong>{file?.name || "Skizze, PDF oder Beispiel auswählen"}</strong><small>{file ? `${formatBytes(file.size)} · bereit zum Hochladen` : "Optional · bis 20 MB"}</small></button><input ref={fileRef} className="sr-only" type="file" onChange={(event) => setFile(event.target.files?.[0] || null)} /><div className="handover-card"><div className="avatar large">DK</div><div><span>Direkte Übergabe</span><h3>an Ihr druckkultur-Team</h3><p>Das Projekt öffnet sich nach dem Absenden sofort. Der Mitarbeiter kann Status, nächsten Schritt, Zuständigkeit und Liefertermin bearbeiten.</p></div></div></div>}<div className="form-navigation">{step > 1 ? <button type="button" className="ghost-button" onClick={() => setStep((current) => current - 1)}>Zurück</button> : <span />}<button className="primary-button" type="submit" disabled={step === 1 && !request.kind}>{step < 3 ? "Weiter" : "Projekt anlegen"}<Icon name="arrow" size={19} /></button></div></form></section><aside className="request-aside"><div className="aside-quote"><span className="quote-mark">„</span><p>Sie müssen noch nicht wissen, wie es technisch umgesetzt wird. Genau dafür sind wir da.</p><strong>Ihr druckkultur-Team</strong></div><div className="security-note"><Icon name="shield" size={23} /><div><strong>Persönlich statt automatisch</strong><span>Keine Sofortpreise, kein Warenkorb. Die Anfrage landet mit allen Informationen beim zuständigen Menschen.</span></div></div></aside></div></div>;
-}
 
+function RequestView({ company, currentUser, onCreate }) {
+  const [step, setStep] = useState(1);
+  const [request, setRequest] = useState({
+    ...emptyRequest,
+    documentType: currentUser.type === "internal" ? "Sonstiges" : "Anfrage"
+  });
+  const [file, setFile] = useState(null);
+  const [analysisFile, setAnalysisFile] = useState(null);
+  const [analysisState, setAnalysisState] = useState("idle");
+  const [analysisInfo, setAnalysisInfo] = useState("");
+  const fileRef = useRef(null);
+  const analysisRef = useRef(null);
+  const kinds = ["Printprodukt", "Mailing", "Faltschachtel / Verpackung", "Veredelung", "Sonderproduktion", "Noch nicht sicher"];
+  const documentTypes = documentTypesFor(currentUser);
+
+  function update(key, value) {
+    setRequest((current) => ({ ...current, [key]: value }));
+  }
+
+  async function analyzeOrderPdf() {
+    if (!analysisFile) return;
+    if (analysisFile.type !== "application/pdf" && !analysisFile.name.toLowerCase().endsWith(".pdf")) {
+      setAnalysisInfo("Bitte wählen Sie für die automatische Auswertung ein PDF aus.");
+      return;
+    }
+    if (analysisFile.size > 8 * 1024 * 1024) {
+      setAnalysisInfo("Für die KI-Auswertung sind PDFs bis 8 MB vorgesehen.");
+      return;
+    }
+    setAnalysisState("loading");
+    setAnalysisInfo("");
+    try {
+      const formData = new FormData();
+      formData.append("file", analysisFile);
+      formData.append("company", company.name);
+      const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
+      const response = await fetch(`${basePath}/api/analyze-order`, { method: "POST", body: formData });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Die PDF-Analyse ist fehlgeschlagen.");
+      const data = result.data || {};
+      setRequest((current) => ({
+        ...current,
+        kind: data.kind || current.kind || "Printprodukt",
+        title: data.title || current.title,
+        description: data.description || current.description,
+        quantity: data.quantity || current.quantity,
+        deadline: data.deadline || current.deadline,
+        customerOrderNumber: data.customerOrderNumber || current.customerOrderNumber,
+        format: data.format || current.format,
+        material: data.material || current.material,
+        documentType: currentUser.type === "internal" ? "Sonstiges" : "Bestellung"
+      }));
+      setFile(analysisFile);
+      setAnalysisState("done");
+      setAnalysisInfo(result.mode === "ai"
+        ? "Die Bestellung wurde mit KI ausgewertet. Bitte die erkannten Angaben kurz kontrollieren."
+        : "Vorführanalyse ohne hinterlegten API-Schlüssel: Die Felder wurden mit einem realistischen Muster befüllt. Für echte PDF-Auswertung OPENAI_API_KEY in Webflow hinterlegen.");
+    } catch (error) {
+      console.error(error);
+      setAnalysisState("error");
+      setAnalysisInfo(error.message || "Die PDF konnte nicht ausgewertet werden.");
+    }
+  }
+
+  async function submit(event) {
+    event.preventDefault();
+    if (step < 3) {
+      setStep((current) => current + 1);
+      return;
+    }
+    await onCreate(request, file);
+    setRequest({
+      ...emptyRequest,
+      documentType: currentUser.type === "internal" ? "Sonstiges" : "Anfrage"
+    });
+    setFile(null);
+    setAnalysisFile(null);
+    setAnalysisState("idle");
+    setAnalysisInfo("");
+    setStep(1);
+  }
+
+  return (
+    <div className="page-stack">
+      <PageHeader
+        eyebrow="Kein Warenkorb, sondern persönliche Beratung"
+        title="Projekt erstellen"
+        lead={`Ein Bestell-PDF kann die Felder automatisch vorbelegen. Alternativ reichen eine Idee, ein Muster oder wenige Stichpunkte für ${company.name}.`}
+      />
+      <div className="request-layout">
+        <section className="panel request-panel">
+          <div className="stepper">
+            {[1, 2, 3].map((item) => (
+              <span key={item} className={step >= item ? "active" : ""}>
+                <i>{step > item ? <Icon name="check" size={15} /> : item}</i>
+                <b>{item === 1 ? "Bestellung oder Idee" : item === 2 ? "Prüfen & ergänzen" : "Dokument & Übergabe"}</b>
+              </span>
+            ))}
+          </div>
+
+          <form onSubmit={submit}>
+            {step === 1 && (
+              <div className="form-step">
+                <div className="ai-order-panel">
+                  <div className="ai-order-heading">
+                    <span className="ai-order-icon"><Icon name="fileCheck" size={27} /></span>
+                    <div>
+                      <span className="eyebrow">Bestell-PDF automatisch auslesen</span>
+                      <h2>PDF hochladen – Felder automatisch befüllen</h2>
+                      <p>Bestellnummer, Produkt, Menge, Format, Material und Termin werden erkannt und anschließend zur Kontrolle angezeigt.</p>
+                    </div>
+                  </div>
+                  <button className="upload-zone compact-upload" type="button" onClick={() => analysisRef.current?.click()}>
+                    <Icon name="upload" size={30} />
+                    <strong>{analysisFile?.name || "Bestell-PDF auswählen"}</strong>
+                    <small>{analysisFile ? `${formatBytes(analysisFile.size)} · bereit zur Analyse` : "PDF bis 8 MB"}</small>
+                  </button>
+                  <input
+                    ref={analysisRef}
+                    className="sr-only"
+                    type="file"
+                    accept="application/pdf,.pdf"
+                    onChange={(event) => {
+                      setAnalysisFile(event.target.files?.[0] || null);
+                      setAnalysisState("idle");
+                      setAnalysisInfo("");
+                    }}
+                  />
+                  <button className="primary-button ai-analyze-button" type="button" disabled={!analysisFile || analysisState === "loading"} onClick={analyzeOrderPdf}>
+                    {analysisState === "loading" ? "PDF wird ausgewertet …" : "Bestellung automatisch auslesen"}
+                  </button>
+                  {analysisInfo && <p className={classNames("analysis-info", analysisState)}>{analysisInfo}</p>}
+                </div>
+
+                <div className="manual-divider"><span>oder manuell beginnen</span></div>
+                <h2>Was möchten Sie umsetzen?</h2>
+                <p>Wählen Sie nur die grobe Richtung. Die technische Lösung klären wir gemeinsam.</p>
+                <div className="kind-grid">
+                  {kinds.map((kind) => (
+                    <button type="button" key={kind} className={request.kind === kind ? "selected" : ""} onClick={() => update("kind", kind)}>
+                      <Icon name={kind.includes("Verpackung") ? "layers" : "print"} size={26} />
+                      <span>{kind}</span>
+                      {request.kind === kind && <Icon name="check" size={18} />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {step === 2 && (
+              <div className="form-step">
+                <h2>Erkannte Angaben prüfen und ergänzen</h2>
+                <p>Alle Felder bleiben bearbeitbar. Ungefähre Angaben genügen.</p>
+                <div className="form-grid">
+                  <label className="form-field wide">
+                    <span>Arbeitstitel / Produkt</span>
+                    <input value={request.title} onChange={(event) => update("title", event.target.value)} placeholder="z. B. Faltschachtel Magnesium Komplex" />
+                  </label>
+                  <label className="form-field">
+                    <span>Kunden-Bestellnummer</span>
+                    <input value={request.customerOrderNumber} onChange={(event) => update("customerOrderNumber", event.target.value)} placeholder="z. B. PO-2026-1845" />
+                  </label>
+                  <label className="form-field">
+                    <span>Ungefähre Menge</span>
+                    <input value={request.quantity} onChange={(event) => update("quantity", event.target.value)} placeholder="z. B. 25.000 Stück" />
+                  </label>
+                  <label className="form-field">
+                    <span>Format</span>
+                    <input value={request.format} onChange={(event) => update("format", event.target.value)} placeholder="z. B. 59 × 59 × 110 mm" />
+                  </label>
+                  <label className="form-field">
+                    <span>Material</span>
+                    <input value={request.material} onChange={(event) => update("material", event.target.value)} placeholder="z. B. GC1 350 g/m²" />
+                  </label>
+                  <label className="form-field">
+                    <span>Wunschtermin</span>
+                    <input type="date" value={request.deadline} onChange={(event) => update("deadline", event.target.value)} />
+                  </label>
+                  <label className="form-field wide">
+                    <span>Beschreibung und Besonderheiten</span>
+                    <textarea rows="6" value={request.description} onChange={(event) => update("description", event.target.value)} placeholder="Was soll entstehen und was ist Ihnen dabei wichtig?" />
+                  </label>
+                </div>
+              </div>
+            )}
+
+            {step === 3 && (
+              <div className="form-step">
+                <h2>Dokument zuordnen und Projekt übergeben</h2>
+                <p>Wählen Sie aus, um welche Dokumentart es sich handelt. Das Dokument erscheint anschließend direkt im Projekt.</p>
+                <label className="form-field">
+                  <span>Dokumentart</span>
+                  <select value={request.documentType} onChange={(event) => update("documentType", event.target.value)}>
+                    {documentTypes.map((item) => <option key={item}>{item}</option>)}
+                  </select>
+                </label>
+                <button className="upload-zone" type="button" onClick={() => fileRef.current?.click()}>
+                  <Icon name="upload" size={34} />
+                  <strong>{file?.name || "PDF, Druckdaten oder weitere Datei auswählen"}</strong>
+                  <small>{file ? `${formatBytes(file.size)} · wird als ${request.documentType} hochgeladen` : "Optional · bis 20 MB"}</small>
+                </button>
+                <input ref={fileRef} className="sr-only" type="file" onChange={(event) => setFile(event.target.files?.[0] || null)} />
+                <div className="handover-card">
+                  <div className="avatar large">DK</div>
+                  <div>
+                    <span>Direkte Übergabe</span>
+                    <h3>an Ihr druckkultur-Team</h3>
+                    <p>Das Projekt öffnet sich nach dem Absenden sofort. Status, Dokumente und Zuständigkeiten können anschließend weiterbearbeitet werden.</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="form-navigation">
+              {step > 1 ? <button type="button" className="ghost-button" onClick={() => setStep((current) => current - 1)}>Zurück</button> : <span />}
+              <button className="primary-button" type="submit" disabled={step === 1 && !request.kind && !analysisFile}>
+                {step < 3 ? "Weiter" : "Projekt anlegen"} <Icon name="arrow" size={19} />
+              </button>
+            </div>
+          </form>
+        </section>
+
+        <aside className="request-aside">
+          <div className="aside-quote">
+            <span className="quote-mark">„</span>
+            <p>Eine Bestellung soll nicht abgeschrieben werden müssen. Das Portal übernimmt die Vorarbeit – die persönliche Prüfung bleibt bei uns.</p>
+            <strong>Ihr druckkultur-Team</strong>
+          </div>
+          <div className="security-note">
+            <Icon name="shield" size={23} />
+            <div>
+              <strong>KI nur als Unterstützung</strong>
+              <span>Erkannte Angaben werden nie ungeprüft verbindlich übernommen. Ein Mitarbeiter kontrolliert die Bestellung und klärt offene Punkte persönlich.</span>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+  );
+}
 function TeamView({ company, users, currentUser, onMessage, onCallback }) {
   const internalTeam = company.assignedTeam.map((id) => getUser(users, id)).filter(Boolean);
   const customerTeam = users.filter((user) => user.type === "customer" && user.companyId === company.id);
@@ -495,29 +1432,138 @@ function TeamView({ company, users, currentUser, onMessage, onCallback }) {
   return <div className="page-stack"><PageHeader eyebrow="Klare Zuständigkeiten" title={currentUser.type === "customer" ? "Ihre Ansprechpartner" : `Kontakte bei ${company.shortName}`} lead="Nachrichten öffnen eine echte direkte Unterhaltung. Rückrufwünsche erscheinen beim zuständigen Mitarbeiter sofort und bleiben in seiner Rückrufzentrale sichtbar." /><section className="team-grid expanded-team">{people.map((person) => <article className="team-card" key={person.id}><div className="team-card-header"><div className="avatar xlarge">{person.initials}</div><span className="availability-label"><i />Heute erreichbar</span></div><span className="team-role">{person.roleLabel}</span><h2>{person.name}</h2><p>{person.email}<br />{person.phone}</p><div className="team-actions"><button className="primary-button compact" onClick={() => onMessage(person.id)}><Icon name="message" size={18} /> Nachricht</button>{currentUser.type === "customer" ? <button className="secondary-button compact" onClick={() => onCallback(person.id)}><Icon name="phone" size={18} /> Rückruf wünschen</button> : <a className="secondary-button compact" href={telHref(person.phone)}><Icon name="phone" size={18} /> Direkt anrufen</a>}</div></article>)}</section>{currentUser.type === "internal" && <section className="panel contact-rights"><PanelHeader title="Kundenzugänge" subtitle="Sicht und Freigaberechte je Mitarbeiter" /><div className="people-list">{customerTeam.map((person) => <article key={person.id}><span className="avatar">{person.initials}</span><div><strong>{person.name}</strong><span>{person.roleLabel} · {person.phone}</span></div><div className="rights-summary"><span>{person.rights.viewAllProjects ? "Alle Projekte" : "Nur zugewiesene Projekte"}</span><span>{person.rights.approve ? "Freigabe erlaubt" : "Keine Freigabe"}</span></div></article>)}</div></section>}</div>;
 }
 
+
 function CallbackRequestModal({ target, currentUser, onClose, onSubmit }) {
   const [subject, setSubject] = useState("");
   const [preferredTime, setPreferredTime] = useState("Möglichst bald");
-  return <div className="modal-layer"><button className="modal-backdrop" onClick={onClose} /><section className="callback-request-modal" role="dialog" aria-modal="true"><header><div><span className="eyebrow">Rückruf anfordern</span><h2>{target?.name}</h2></div><button className="icon-button" onClick={onClose}><Icon name="close" /></button></header><div className="callback-phone-preview"><Icon name="phone" size={24} /><div><span>Hinterlegte Rückrufnummer</span><strong>{currentUser.phone}</strong><small>Die Nummer kann in den Firmeneinstellungen geändert werden.</small></div></div><label className="form-field"><span>Worum geht es?</span><textarea rows="4" value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="z. B. kurze Abstimmung zur Freigabeversion" /></label><label className="form-field"><span>Gewünschter Zeitpunkt</span><select value={preferredTime} onChange={(event) => setPreferredTime(event.target.value)}><option>Möglichst bald</option><option>Heute Vormittag</option><option>Heute Nachmittag</option><option>Morgen Vormittag</option></select></label><button className="primary-button wide-button" onClick={() => onSubmit({ subject, preferredTime })}>Rückrufwunsch senden <Icon name="phone" size={18} /></button></section></div>;
+  const [contactMethod, setContactMethod] = useState("phone");
+  const teamsAccount = currentUser.teamsAccount || currentUser.email;
+
+  return (
+    <div className="modal-layer">
+      <button className="modal-backdrop" onClick={onClose} />
+      <section className="callback-request-modal" role="dialog" aria-modal="true">
+        <header>
+          <div><span className="eyebrow">Gespräch anfordern</span><h2>{target?.name}</h2></div>
+          <button className="icon-button" onClick={onClose}><Icon name="close" /></button>
+        </header>
+
+        <div className="contact-method-grid">
+          <button className={contactMethod === "phone" ? "active" : ""} onClick={() => setContactMethod("phone")}>
+            <Icon name="phone" size={23} />
+            <span><strong>Telefonischer Rückruf</strong><small>{currentUser.phone}</small></span>
+          </button>
+          <button className={contactMethod === "teams" ? "active" : ""} onClick={() => setContactMethod("teams")}>
+            <Icon name="users" size={23} />
+            <span><strong>Microsoft Teams</strong><small>{teamsAccount}</small></span>
+          </button>
+        </div>
+
+        <label className="form-field">
+          <span>Worum geht es?</span>
+          <textarea rows="4" value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="z. B. kurze Abstimmung zur Freigabeversion" />
+        </label>
+        <label className="form-field">
+          <span>Gewünschter Zeitpunkt</span>
+          <select value={preferredTime} onChange={(event) => setPreferredTime(event.target.value)}>
+            <option>Möglichst bald</option>
+            <option>Heute Vormittag</option>
+            <option>Heute Nachmittag</option>
+            <option>Morgen Vormittag</option>
+          </select>
+        </label>
+        <button className="primary-button wide-button" onClick={() => onSubmit({ subject, preferredTime, contactMethod })}>
+          {contactMethod === "teams" ? "Teams-Gespräch anfordern" : "Rückrufwunsch senden"}
+          <Icon name={contactMethod === "teams" ? "users" : "phone"} size={18} />
+        </button>
+      </section>
+    </div>
+  );
 }
+
 function CallbackPopup({ entry, requester, company, onLater, onComplete }) {
-  return <aside className="callback-popup" role="alert"><div className="callback-popup-icon"><Icon name="phone" size={28} /></div><div className="callback-popup-content"><span className="eyebrow">Neuer Rückrufwunsch · {company?.shortName}</span><h2>{requester?.name} möchte zurückgerufen werden</h2><p>{entry.subject}</p><dl><div><dt>Telefon</dt><dd>{entry.phone}</dd></div><div><dt>Zeitwunsch</dt><dd>{entry.preferredTime}</dd></div></dl><div className="callback-popup-actions"><a className="primary-button" href={telHref(entry.phone)}><Icon name="phone" size={19} /> Jetzt anrufen</a><button className="secondary-button" onClick={onComplete}>Erledigt</button><button className="ghost-button" onClick={onLater}>Später</button></div><small>„Jetzt anrufen“ öffnet die am PC hinterlegte Telefonie- oder Softphone-Anwendung.</small></div></aside>;
+  const isTeams = entry.contactMethod === "teams";
+  const contact = entry.contactValue || (isTeams ? entry.teamsAccount : entry.phone);
+  return (
+    <aside className="callback-popup" role="alert">
+      <div className="callback-popup-icon"><Icon name={isTeams ? "users" : "phone"} size={28} /></div>
+      <div className="callback-popup-content">
+        <span className="eyebrow">Neue Gesprächsanfrage · {company?.shortName}</span>
+        <h2>{requester?.name} möchte {isTeams ? "über Teams sprechen" : "zurückgerufen werden"}</h2>
+        <p>{entry.subject}</p>
+        <dl>
+          <div><dt>Kontaktweg</dt><dd>{isTeams ? "Microsoft Teams" : "Telefon"}</dd></div>
+          <div><dt>Kontakt</dt><dd>{contact}</dd></div>
+          <div><dt>Zeitwunsch</dt><dd>{entry.preferredTime}</dd></div>
+        </dl>
+        <div className="callback-popup-actions">
+          <a className="primary-button" href={isTeams ? teamsHref(contact) : telHref(contact)}>
+            <Icon name={isTeams ? "users" : "phone"} size={19} /> {isTeams ? "Teams öffnen" : "Jetzt anrufen"}
+          </a>
+          <button className="secondary-button" onClick={onComplete}>Erledigt</button>
+          <button className="ghost-button" onClick={onLater}>Später</button>
+        </div>
+        <small>{isTeams ? "Teams wird mit dem hinterlegten Kundenkonto geöffnet." : "Der Anruf wird an die am PC eingerichtete Telefonie-Anwendung übergeben."}</small>
+      </div>
+    </aside>
+  );
 }
+
 function CallbacksView({ callbacks, users, companies, onComplete, onOpenCompany }) {
   const [filter, setFilter] = useState("pending");
   const filtered = callbacks.filter((entry) => filter === "all" || entry.status === filter);
-  return <div className="page-stack"><PageHeader eyebrow="Persönliche Reaktion statt Warteschleife" title="Rückrufzentrale" lead="Jeder Rückrufwunsch enthält Kunde, Firma, hinterlegte Telefonnummer, Anlass und gewünschten Zeitpunkt." /><div className="filter-tabs callback-filters"><button className={filter === "pending" ? "active" : ""} onClick={() => setFilter("pending")}>Offen</button><button className={filter === "completed" ? "active" : ""} onClick={() => setFilter("completed")}>Erledigt</button><button className={filter === "all" ? "active" : ""} onClick={() => setFilter("all")}>Alle</button></div><section className="callback-list">{filtered.map((entry) => { const requester = getUser(users, entry.requesterUserId); const company = getCompany(companies, entry.companyId); return <article className={classNames("callback-card", entry.status)} key={entry.id}><div className="callback-card-icon"><Icon name="phone" size={25} /></div><div className="callback-card-main"><span>{company?.name} · {entry.requestedAt}</span><h2>{requester?.name}</h2><p>{entry.subject}</p><div className="callback-meta"><strong>{entry.phone}</strong><span>{entry.preferredTime}</span></div></div><div className="callback-card-actions"><button className="ghost-button" onClick={() => onOpenCompany(entry.companyId)}>Firma öffnen</button><a className="primary-button" href={telHref(entry.phone)}><Icon name="phone" size={18} /> Anrufen</a>{entry.status === "pending" && <button className="secondary-button" onClick={() => onComplete(entry.id)}>Erledigt</button>}</div></article>; })}</section>{!filtered.length && <EmptyState title="Keine Rückrufe" text="Für diese Auswahl gibt es keine Rückrufwünsche." />}</div>;
-}
 
+  return (
+    <div className="page-stack">
+      <PageHeader
+        eyebrow="Persönliche Reaktion statt Warteschleife"
+        title="Gesprächszentrale"
+        lead="Telefonische Rückrufe und Teams-Gespräche erscheinen mit Firma, Kontaktweg, Anlass und gewünschtem Zeitpunkt."
+      />
+      <div className="filter-tabs callback-filters">
+        <button className={filter === "pending" ? "active" : ""} onClick={() => setFilter("pending")}>Offen</button>
+        <button className={filter === "completed" ? "active" : ""} onClick={() => setFilter("completed")}>Erledigt</button>
+        <button className={filter === "all" ? "active" : ""} onClick={() => setFilter("all")}>Alle</button>
+      </div>
+      <section className="callback-list">
+        {filtered.map((entry) => {
+          const requester = getUser(users, entry.requesterUserId);
+          const company = getCompany(companies, entry.companyId);
+          const isTeams = entry.contactMethod === "teams";
+          const contact = entry.contactValue || (isTeams ? entry.teamsAccount : entry.phone);
+          return (
+            <article className={classNames("callback-card", entry.status)} key={entry.id}>
+              <div className="callback-card-icon"><Icon name={isTeams ? "users" : "phone"} size={25} /></div>
+              <div className="callback-card-main">
+                <span>{company?.name} · {entry.requestedAt}</span>
+                <h2>{requester?.name}</h2>
+                <p>{entry.subject}</p>
+                <div className="callback-meta"><strong>{isTeams ? "Microsoft Teams" : contact}</strong><span>{entry.preferredTime}</span></div>
+              </div>
+              <div className="callback-card-actions">
+                <button className="ghost-button" onClick={() => onOpenCompany(entry.companyId)}>Firma öffnen</button>
+                <a className="primary-button" href={isTeams ? teamsHref(contact) : telHref(contact)}>
+                  <Icon name={isTeams ? "users" : "phone"} size={18} /> {isTeams ? "Teams öffnen" : "Anrufen"}
+                </a>
+                {entry.status === "pending" && <button className="secondary-button" onClick={() => onComplete(entry.id)}>Erledigt</button>}
+              </div>
+            </article>
+          );
+        })}
+      </section>
+      {!filtered.length && <EmptyState title="Keine Gesprächsanfragen" text="Für diese Auswahl gibt es keine offenen Vorgänge." />}
+    </div>
+  );
+}
 function CompanySettingsView({ company, users, currentUser, onUpdateCompany, onUpdateUser, onInvite }) {
   const [draft, setDraft] = useState({ name: company.name, primaryColor: company.primaryColor, accentColor: company.accentColor, logoData: company.logoData });
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [invite, setInvite] = useState({ name: "", email: "", phone: "", roleLabel: "" });
+  const [invite, setInvite] = useState({ name: "", email: "", phone: "", teamsAccount: "", roleLabel: "" });
   const canManageUsers = currentUser.type === "internal" || currentUser.rights.manageUsers;
   useEffect(() => setDraft({ name: company.name, primaryColor: company.primaryColor, accentColor: company.accentColor, logoData: company.logoData }), [company]);
   function readLogo(file) { if (!file || file.size > 1000000) return; const reader = new FileReader(); reader.onload = () => setDraft((current) => ({ ...current, logoData: String(reader.result || "") })); reader.readAsDataURL(file); }
   const rights = [["viewAllProjects", "Alle Firmenprojekte sehen"], ["approve", "Druckdaten freigeben"], ["viewFinancials", "Angebote und Rechnungen sehen"], ["createRequests", "Neue Projekte anfragen"], ["manageCompany", "Firmendarstellung verwalten"], ["manageUsers", "Benutzer und Rechte verwalten"]];
-  return <div className="page-stack"><PageHeader eyebrow="Mandant und Rollen" title="Firmeneinstellungen" lead={`Logo, Farbwelt, Kontaktdaten und Zugriffsrechte werden für ${company.name} zentral gesteuert.`} /><section className="settings-grid"><div className="panel settings-panel"><div className="settings-heading"><div><h2>Darstellung der Firma</h2><p>Der Arbeitsraum übernimmt die Akzentfarben und das Logo des Kunden.</p></div><CompanyLogo company={{ ...company, ...draft }} /></div><div className="form-grid"><label className="form-field wide"><span>Firmenname</span><input value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} /></label><label className="form-field"><span>Hauptfarbe</span><div className="color-field"><input type="color" value={draft.primaryColor} onChange={(event) => setDraft((current) => ({ ...current, primaryColor: event.target.value }))} /><input value={draft.primaryColor} onChange={(event) => setDraft((current) => ({ ...current, primaryColor: event.target.value }))} /></div></label><label className="form-field"><span>Akzentfarbe</span><div className="color-field"><input type="color" value={draft.accentColor} onChange={(event) => setDraft((current) => ({ ...current, accentColor: event.target.value }))} /><input value={draft.accentColor} onChange={(event) => setDraft((current) => ({ ...current, accentColor: event.target.value }))} /></div></label><label className="form-field wide"><span>Kundenlogo</span><input type="file" accept="image/png,image/jpeg,image/svg+xml" onChange={(event) => readLogo(event.target.files?.[0])} /></label></div><div className="settings-actions"><button className="ghost-button" onClick={() => setDraft((current) => ({ ...current, logoData: "" }))}>Logo entfernen</button><button className="primary-button" onClick={() => onUpdateCompany(company.id, draft)}>Darstellung speichern</button></div></div><div className="panel branding-preview" style={{ "--preview-primary": draft.primaryColor, "--preview-accent": draft.accentColor }}><span className="eyebrow">Vorschau</span><div className="preview-header"><CompanyLogo company={{ ...company, ...draft }} /><div><small>Ihre externe Druckabteilung</small><strong>{draft.name}</strong></div></div><div className="preview-project"><span>DK-260XXX</span><h3>Ihr Projekt auf einen Blick</h3><p>Nächster Schritt, Ansprechpartner und Termin sind sofort sichtbar.</p><button>Projekt öffnen</button></div></div></section><section className="panel user-settings-panel"><div className="settings-heading"><div><h2>Benutzer, Telefonnummern und Rechte</h2><p>Die hier hinterlegte Telefonnummer wird bei einem Rückrufwunsch automatisch an den Mitarbeiter übertragen.</p></div>{canManageUsers && <button className="secondary-button" onClick={() => setInviteOpen((value) => !value)}><Icon name="plus" size={18} /> Benutzer hinzufügen</button>}</div>{inviteOpen && <form className="invite-form" onSubmit={(event) => { event.preventDefault(); onInvite(company.id, invite); setInvite({ name: "", email: "", phone: "", roleLabel: "" }); setInviteOpen(false); }}><label className="form-field"><span>Name</span><input required value={invite.name} onChange={(event) => setInvite((current) => ({ ...current, name: event.target.value }))} /></label><label className="form-field"><span>E-Mail</span><input required type="email" value={invite.email} onChange={(event) => setInvite((current) => ({ ...current, email: event.target.value }))} /></label><label className="form-field"><span>Telefon</span><input required value={invite.phone} onChange={(event) => setInvite((current) => ({ ...current, phone: event.target.value }))} /></label><label className="form-field"><span>Funktion</span><input value={invite.roleLabel} onChange={(event) => setInvite((current) => ({ ...current, roleLabel: event.target.value }))} /></label><button className="primary-button" type="submit">Benutzer anlegen</button></form>}<div className="user-rights-list">{users.map((person) => <article key={person.id}><header><span className="avatar">{person.initials}</span><div><h3>{person.name}</h3><p>{person.roleLabel} · {person.email}</p></div><span className={classNames("access-label", person.rights.viewAllProjects && "full")}>{person.rights.viewAllProjects ? "Firmensicht" : "Eigene Projekte"}</span></header><div className="user-contact-row"><label className="form-field"><span>Telefonnummer für Rückrufe</span><input value={person.phone || ""} disabled={!canManageUsers} onChange={(event) => onUpdateUser(person.id, { phone: event.target.value })} /></label></div><div className="rights-grid">{rights.map(([key, label]) => <label key={key} className="right-toggle"><span><strong>{label}</strong></span><input type="checkbox" checked={Boolean(person.rights[key])} disabled={!canManageUsers || (person.id === currentUser.id && key === "manageUsers")} onChange={(event) => onUpdateUser(person.id, { rights: { [key]: event.target.checked } })} /><i /></label>)}</div></article>)}</div></section></div>;
+  return <div className="page-stack"><PageHeader eyebrow="Mandant und Rollen" title="Firmeneinstellungen" lead={`Logo, Farbwelt, Telefonnummern, Teams-Konten und Zugriffsrechte werden für ${company.name} zentral gesteuert.`} /><section className="settings-grid"><div className="panel settings-panel"><div className="settings-heading"><div><h2>Darstellung der Firma</h2><p>Der Arbeitsraum übernimmt die Akzentfarben und das Logo des Kunden.</p></div><CompanyLogo company={{ ...company, ...draft }} /></div><div className="form-grid"><label className="form-field wide"><span>Firmenname</span><input value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} /></label><label className="form-field"><span>Hauptfarbe</span><div className="color-field"><input type="color" value={draft.primaryColor} onChange={(event) => setDraft((current) => ({ ...current, primaryColor: event.target.value }))} /><input value={draft.primaryColor} onChange={(event) => setDraft((current) => ({ ...current, primaryColor: event.target.value }))} /></div></label><label className="form-field"><span>Akzentfarbe</span><div className="color-field"><input type="color" value={draft.accentColor} onChange={(event) => setDraft((current) => ({ ...current, accentColor: event.target.value }))} /><input value={draft.accentColor} onChange={(event) => setDraft((current) => ({ ...current, accentColor: event.target.value }))} /></div></label><label className="form-field wide"><span>Kundenlogo</span><input type="file" accept="image/png,image/jpeg,image/svg+xml" onChange={(event) => readLogo(event.target.files?.[0])} /></label></div><div className="settings-actions"><button className="ghost-button" onClick={() => setDraft((current) => ({ ...current, logoData: "" }))}>Logo entfernen</button><button className="primary-button" onClick={() => onUpdateCompany(company.id, draft)}>Darstellung speichern</button></div></div><div className="panel branding-preview" style={{ "--preview-primary": draft.primaryColor, "--preview-accent": draft.accentColor }}><span className="eyebrow">Vorschau</span><div className="preview-header"><CompanyLogo company={{ ...company, ...draft }} /><div><small>Ihre externe Druckabteilung</small><strong>{draft.name}</strong></div></div><div className="preview-project"><span>DK-260XXX</span><h3>Ihr Projekt auf einen Blick</h3><p>Nächster Schritt, Ansprechpartner und Termin sind sofort sichtbar.</p><button>Projekt öffnen</button></div></div></section><section className="panel user-settings-panel"><div className="settings-heading"><div><h2>Benutzer, Telefonnummern und Rechte</h2><p>Telefonnummer und Teams-Konto stehen dem Kunden bei einer Gesprächsanfrage zur Auswahl.</p></div>{canManageUsers && <button className="secondary-button" onClick={() => setInviteOpen((value) => !value)}><Icon name="plus" size={18} /> Benutzer hinzufügen</button>}</div>{inviteOpen && <form className="invite-form" onSubmit={(event) => { event.preventDefault(); onInvite(company.id, invite); setInvite({ name: "", email: "", phone: "", teamsAccount: "", roleLabel: "" }); setInviteOpen(false); }}><label className="form-field"><span>Name</span><input required value={invite.name} onChange={(event) => setInvite((current) => ({ ...current, name: event.target.value }))} /></label><label className="form-field"><span>E-Mail</span><input required type="email" value={invite.email} onChange={(event) => setInvite((current) => ({ ...current, email: event.target.value }))} /></label><label className="form-field"><span>Telefon</span><input required value={invite.phone} onChange={(event) => setInvite((current) => ({ ...current, phone: event.target.value }))} /></label><label className="form-field"><span>Teams-Konto</span><input type="email" value={invite.teamsAccount} onChange={(event) => setInvite((current) => ({ ...current, teamsAccount: event.target.value }))} placeholder="meist die geschäftliche E-Mail" /></label><label className="form-field"><span>Funktion</span><input value={invite.roleLabel} onChange={(event) => setInvite((current) => ({ ...current, roleLabel: event.target.value }))} /></label><button className="primary-button" type="submit">Benutzer anlegen</button></form>}<div className="user-rights-list">{users.map((person) => <article key={person.id}><header><span className="avatar">{person.initials}</span><div><h3>{person.name}</h3><p>{person.roleLabel} · {person.email}</p></div><span className={classNames("access-label", person.rights.viewAllProjects && "full")}>{person.rights.viewAllProjects ? "Firmensicht" : "Eigene Projekte"}</span></header><div className="user-contact-row"><label className="form-field"><span>Telefonnummer für Rückrufe</span><input value={person.phone || ""} disabled={!canManageUsers} onChange={(event) => onUpdateUser(person.id, { phone: event.target.value })} /></label><label className="form-field"><span>Microsoft-Teams-Konto</span><input value={person.teamsAccount || person.email || ""} disabled={!canManageUsers} onChange={(event) => onUpdateUser(person.id, { teamsAccount: event.target.value })} /></label></div><div className="rights-grid">{rights.map(([key, label]) => <label key={key} className="right-toggle"><span><strong>{label}</strong></span><input type="checkbox" checked={Boolean(person.rights[key])} disabled={!canManageUsers || (person.id === currentUser.id && key === "manageUsers")} onChange={(event) => onUpdateUser(person.id, { rights: { [key]: event.target.checked } })} /><i /></label>)}</div></article>)}</div></section></div>;
 }
 
 function ProjectTable({ projects, onOpen }) { return <div className="project-table-wrap"><table className="project-table"><thead><tr><th>Projekt</th><th>Status</th><th>Fortschritt</th><th>Lieferung</th><th></th></tr></thead><tbody>{projects.map((project) => <tr key={project.id}><td><button className="table-project" onClick={() => onOpen(project.id)}><strong>{project.title}</strong><span>{project.id} · {project.category}</span></button></td><td><span className={classNames("status-badge", project.statusTone)}>{project.status}</span></td><td><div className="table-progress"><i><b style={{ width: `${project.progress}%` }} /></i><span>{project.progress}%</span></div></td><td>{project.delivery}</td><td><button className="table-open" onClick={() => onOpen(project.id)}>Öffnen <Icon name="arrow" size={16} /></button></td></tr>)}</tbody></table></div>; }
