@@ -1,26 +1,33 @@
-# druckkultur desk
+# druckkultur desk – vollständige Vorführversion
 
-Next.js-MVP für einen persönlichen digitalen Projektraum zwischen druckkultur und ihren Kunden. Die App ist bewusst **kein Online-Shop**. Im Mittelpunkt stehen direkte Ansprechpartner, Projekte, Entscheidungen, Dateien, Freigaben und schnelle Rückmeldungen.
+Next.js-Webapp für einen persönlichen digitalen Projektraum zwischen druckkultur und ihren Kunden. Die Anwendung ist bewusst **kein Online-Shop**. Sie zeigt, wie persönliche Beratung, schnelle Reaktion, Projekte, Nachrichten, Dateien, Freigaben und Rückrufe in einem gemeinsamen Arbeitsraum funktionieren können.
 
-## Neu in dieser Version
+## Was in dieser Version vollständig vorführbar ist
 
 - getrenntes Kunden- und Mitarbeiterlogin
-- Mandantenstruktur: mehrere Firmen mit jeweils mehreren Benutzern
-- rollenabhängige Projektsicht
-  - Teamleitung sieht alle Projekte der Firma
-  - Marketing, Einkauf oder QS können auf eigene beziehungsweise zugewiesene Projekte begrenzt werden
-- getrennte Rechte für Freigaben, Finanzdokumente, neue Anfragen und Benutzerverwaltung
-- Firmeneinstellungen für Logo, Firmenname und individuelle Farbwelt
-- firmenübergreifende Mitarbeiteransicht mit Ungelesen-Zähler je Firma
-- Projektwechsel, ohne neue Nachrichten anderer Firmen zu übersehen
-- Nachrichten mit Zustell- und Lesestatus
-- größere Schrift und verbesserte Lesbarkeit
-- lokale Demo-Speicherung im Browser
-- Webflow-Cloud-Konfiguration für Next.js/OpenNext
+- mehrere Firmen mit eigenen Mitarbeitern, Rollen, Logo und Farbwelt
+- Teamleitung sieht alle Firmenprojekte
+- eingeschränkte Benutzer sehen nur zugewiesene Projekte
+- firmenübergreifender Wechsel für druckkultur-Mitarbeiter
+- ungelesene Nachrichten je Firma und Projekt
+- direkte Nachrichten an einzelne Ansprechpartner
+- projektbezogene Nachrichten mit Zustell- und Lesestatus
+- Rückrufwünsche mit hinterlegter Kundentelefonnummer
+- sofortiges Rückruf-Popup beim zuständigen Mitarbeiter
+- eigene Rückrufzentrale mit offenen und erledigten Rückrufen
+- `tel:`-Verknüpfung für eine am PC eingerichtete Telefonie- oder Softphone-App
+- Projekte öffnen als vollständige Arbeitsseite, nicht mehr als seitliches Modal
+- Mitarbeiter können Status, Fortschritt, nächsten Schritt, Liefertermin, Zuständigkeit und Kundenzuordnung ändern
+- Kunden können Freigaben erteilen
+- echte Datei-Uploads bis 20 MB in die Browser-Datenbank
+- hochgeladene Dateien lassen sich wieder herunterladen
+- Dateien können einem bestehenden Projekt oder einer neuen Anfrage zugeordnet werden
+- deutlich größere Typografie und vereinfachte Übersichtsseite
+- alle Änderungen bleiben im verwendeten Browser erhalten
 
 ## Demo-Zugänge
 
-Das Passwort lautet bei allen Demobenutzern:
+Das Passwort lautet bei allen Benutzern:
 
 ```text
 demo
@@ -29,12 +36,14 @@ demo
 ### Kunden
 
 ```text
-laura@vitanova.demo     Teamleitung, sieht alle VitaNova-Projekte
-maria@vitanova.demo     Marketing, sieht nur zugewiesene Projekte
-thomas@vitanova.demo    Qualitätssicherung, sieht nur zugewiesene Projekte
-sabine@musterwerke.demo Teamleitung, sieht alle Musterwerke-Projekte
-david@musterwerke.demo  Produktmarketing, sieht nur zugewiesene Projekte
-nina@musterwerke.demo   Einkauf, sieht alle Projekte und Finanzdokumente
+laura@vitanova.demo      Teamleitung, alle VitaNova-Projekte
+maria@vitanova.demo      Marketing, nur zugewiesene Projekte
+thomas@vitanova.demo     Qualitätssicherung, nur zugewiesene Projekte
+sabine@musterwerke.demo  Teamleitung, alle Musterwerke-Projekte
+david@musterwerke.demo   Produktmarketing, nur zugewiesene Projekte
+nina@musterwerke.demo    Einkauf, alle Projekte und Finanzdokumente
+lena@alpenkraft.demo     Brand Management, alle Projekte
+jonas@alpenkraft.demo    Produktmanagement, nur zugewiesene Projekte
 ```
 
 ### druckkultur-Mitarbeiter
@@ -45,36 +54,29 @@ heinz@druckkultur.demo
 mirco@druckkultur.demo
 ```
 
-Die Konten können direkt auf der Loginseite ausgewählt werden.
+Die Konten lassen sich auf der Loginseite anklicken.
 
-## Enthaltene Funktionen
+## Empfohlener Vorführablauf
 
-- persönliche Übersicht mit offenen Entscheidungen
-- Projektkarten und detaillierte Projektverläufe
-- prototypische Druckfreigabe mit Benutzerbezug
-- projektbezogene Nachrichten statt unübersichtlicher E-Mail-Ketten
-- Lesestatus: „Zugestellt“ beziehungsweise „Gelesen von …“
-- Dokumentbereich mit rollenabhängiger Sicht auf Angebote und Rechnungen
-- geführte Projektanfrage ohne Warenkorb und automatische Preiszusage
-- direkte Ansprechpartner auf Kunden- und druckkultur-Seite
-- Firmenverwaltung mit Benutzerrechten
-- Kundenbranding mit Logo und Akzentfarben
-- responsive dunkle Oberfläche
+1. Als `maria@vitanova.demo` anmelden.
+2. Unter **Kontakte** Andreas direkt eine Nachricht schreiben.
+3. Einen Rückrufwunsch senden. Die Telefonnummer wird aus Marias Benutzerkonto übernommen.
+4. Ein neues Projekt anlegen und dabei eine PDF oder ein Bild hochladen.
+5. Abmelden und als `andreas@druckkultur.demo` anmelden.
+6. Der Rückrufwunsch erscheint sofort als Popup. Über **Jetzt anrufen** wird die am PC hinterlegte Telefonie-App geöffnet.
+7. Das neue Projekt öffnen und im Bereich **Projekt steuern** Status, nächsten Schritt und Liefertermin ändern.
+8. Unter **Dokumente** die hochgeladene Originaldatei wieder herunterladen.
+9. Wieder als Maria anmelden und die geänderte Kundensicht prüfen.
 
-## Wichtiger Status
+## Dateiablage im Vorführmodus
 
-Dies ist ein **funktionsfähiger Frontend-MVP**. Anmeldung, Rollen und Mandantentrennung werden in der Benutzeroberfläche realistisch demonstriert, die Daten liegen aber nur im Browser in `localStorage`.
+Metadaten, Nachrichten, Projekte und Rechte werden in `localStorage` gespeichert. Hochgeladene Dateien werden separat in `IndexedDB` gespeichert. Dadurch können sie in derselben Browserinstallation tatsächlich wieder heruntergeladen werden.
 
-Die Demo ist daher **nicht für echte Kundendaten oder Druckdateien geeignet**. Vor dem Produktivbetrieb müssen ergänzt werden:
+Die Vorführung funktioniert daher auch nach einem Neuladen der Seite. Sie ist jedoch nicht für vertrauliche Echtdaten gedacht. Beim Wechsel auf ein anderes Gerät oder einen anderen Browser stehen die lokal gespeicherten Daten nicht zur Verfügung.
 
-1. serverseitige Authentifizierung mit sicheren Sitzungen, Passkeys oder Einmal-Links
-2. serverseitige Prüfung jeder Berechtigung – nicht nur Filterung im Frontend
-3. relationale Datenbank für Firmen, Benutzer, Rollen, Projekte und Nachrichten
-4. verschlüsselte Dateiablage mit Virenscan und zeitlich begrenzten Downloads
-5. revisionssichere Freigabeprotokolle
-6. E-Mail- und Benachrichtigungsdienst
-7. Datenschutz, Backups, Protokollierung und Löschkonzept
-8. Anbindung an Auftragsübersicht, Plantafel oder MIS
+## Wichtige Abgrenzung
+
+Diese Version ist eine **vollständig bedienbare Produktvorführung**, aber noch kein sicherer Mehrbenutzer-Produktivbetrieb. Für echte Kunden müssen Login, Rechte, Nachrichten, Rückrufe und Dateien serverseitig gespeichert und geprüft werden. Die Benutzeroberfläche und Abläufe können dafür weitgehend übernommen werden.
 
 ## Lokal starten
 
@@ -87,46 +89,33 @@ npm run dev
 
 Danach `http://localhost:3000` öffnen.
 
-Für die Webflow-Cloud-/Cloudflare-Vorschau:
+## GitHub aktualisieren
+
+Den Inhalt dieses Ordners in das vorhandene GitHub-Repository kopieren und die bisherigen Dateien ersetzen:
 
 ```bash
-npm run preview
-```
-
-## Zu GitHub hochladen
-
-1. Bei GitHub ein neues leeres Repository anlegen, beispielsweise `druckkultur-portal`.
-2. ZIP-Datei entpacken.
-3. Im Repository **Add file → Upload files** wählen.
-4. Den Inhalt des entpackten Ordners hochladen. `package.json` muss direkt im Repository-Hauptverzeichnis liegen.
-5. Mit **Commit changes** speichern.
-
-Alternativ per Git:
-
-```bash
-git init
 git add .
-git commit -m "druckkultur desk mit Mandanten und Rollen"
-git branch -M main
-git remote add origin https://github.com/DEIN-NAME/druckkultur-portal.git
-git push -u origin main
+git commit -m "Vollständige Vorführversion mit Rückrufen, Uploads und Projektsteuerung"
+git push
 ```
 
-## In Webflow Cloud bereitstellen
+Webflow Cloud startet nach dem Push normalerweise ein neues Deployment.
 
-1. Webflow Dashboard öffnen.
-2. **Create app / Deploy app** wählen.
-3. GitHub verbinden und das Repository auswählen.
-4. Branch `main` auswählen.
-5. Als Ziel eine vorhandene Webflow-Seite oder eine eigene Domain wählen.
-6. Für einen Pfad wie `druckkultur.de/portal` in Webflow den Mount-Pfad `/portal` setzen.
-7. Folgende Umgebungsvariable anlegen:
+## Webflow Cloud
+
+Root directory, wenn `package.json` direkt im Repository liegt:
+
+```text
+./
+```
+
+Umgebungsvariable:
 
 ```text
 WEBFLOW_CLOUD_MOUNT_PATH=/portal
 ```
 
-Mount-Pfad und Umgebungsvariable müssen identisch sein.
+Der in Webflow eingestellte Mount-Pfad muss ebenfalls `/portal` sein.
 
 ## Projektstruktur
 
@@ -136,10 +125,10 @@ app/
   layout.js         Metadaten und Grundlayout
   page.js           Einstieg
 components/
-  PortalApp.jsx     Login, Mandanten, Rechte und sämtliche Ansichten
+  PortalApp.jsx     gesamte Funktionslogik und alle Ansichten
   Icon.jsx          lokale SVG-Icons
 data/
-  mock-data.js      Firmen, Benutzer, Projekte, Nachrichten und Dokumente
+  mock-data.js      Firmen, Benutzer, Projekte, Nachrichten, Dokumente, Rückrufe
 public/
   favicon.svg
   manifest.webmanifest
@@ -149,22 +138,14 @@ webflow.json
 wrangler.jsonc
 ```
 
-## Datenmodell der Demo
+## Für den echten Betrieb noch erforderlich
 
-```text
-Firma
-├── Firmenbranding
-├── zugeordnete druckkultur-Mitarbeiter
-├── Kundenbenutzer
-│   └── individuelle Rechte
-├── Projekte
-│   └── zugeordnete Kundenbenutzer
-├── Nachrichten
-│   └── readBy[] für Lesestatus
-└── Dokumente
-    └── optional als kaufmännisch gekennzeichnet
-```
-
-## Sinnvolle nächste Entwicklungsstufe
-
-Für einen ersten echten Piloten sollte zunächst ein Backend mit Authentifizierung, Datenbank und sicherer Dateiablage entstehen. Danach können die bestehenden Demo-Ansichten nahezu unverändert gegen echte API-Routen arbeiten.
+- serverseitige Anmeldung und sichere Sitzungen
+- relationale Datenbank mit echter Mandantentrennung
+- serverseitige Rechteprüfung für jede Aktion
+- geschützte Dateiablage mit Virenscan
+- Benachrichtigungen per E-Mail, Teams oder Push
+- Anbindung an Telefonanlage beziehungsweise Softphone-Protokoll
+- revisionssichere Freigabeprotokolle
+- Anbindung an Auftragsübersicht, Plantafel oder MIS
+- Datenschutz, Backups und Löschkonzept

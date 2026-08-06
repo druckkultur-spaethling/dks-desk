@@ -91,3 +91,26 @@ Keine Berechtigung darf ausschließlich im Frontend geprüft werden.
 - vermiedene Statusanfragen per Telefon oder E-Mail
 - Nutzung durch Teamleiter und eingeschränkte Benutzer
 - subjektiver Nutzen für Kunde und druckkultur-Team
+
+## 11. Rückrufwünsche und Telefonintegration
+
+- Telefonnummern im Benutzerprofil serverseitig speichern und formatieren
+- Rückrufwunsch mit Firma, Kunde, Anlass, Zeitwunsch und zuständigem Mitarbeiter speichern
+- Mitarbeiter-Popup zusätzlich über Push, Teams oder Desktop-Benachrichtigung auslösen
+- offene Rückrufe in einer zentralen Warteschlange anzeigen
+- Status `offen`, `angenommen`, `erledigt` und optional `nicht erreicht` vorsehen
+- Klick auf „Anrufen“ über `tel:` oder die Schnittstelle der vorhandenen Telefonanlage auslösen
+- Telefonate und kurze Gesprächsnotizen dem Kunden oder Projekt zuordnen
+- Rückrufwünsche bei Abwesenheit automatisch an die Vertretung weitergeben
+
+## 12. Dateiablage und Upload
+
+Die Vorführversion verwendet IndexedDB im Browser. Im Produktivbetrieb:
+
+- Upload direkt in einen geschützten Objektspeicher
+- Größenlimits je Rolle und Dateityp
+- Virenscan vor Freigabe für andere Benutzer
+- Prüfsumme, Version und Uploader protokollieren
+- zeitlich begrenzte Download-Links verwenden
+- große Druck-PDFs mit unterbrochenen Uploads fortsetzen können
+- Vorschaubilder und PDF-Seiten serverseitig erzeugen

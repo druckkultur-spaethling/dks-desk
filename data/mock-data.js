@@ -44,6 +44,7 @@ export const initialUsers = [
     name: "Andreas Bauernfeind",
     firstName: "Andreas",
     email: "andreas@druckkultur.demo",
+    phone: "+49 30 0000 1101",
     password: "demo",
     roleLabel: "Kundenberatung & Auftragsplanung",
     initials: "AB",
@@ -56,6 +57,7 @@ export const initialUsers = [
     name: "Heinz Späthling",
     firstName: "Heinz",
     email: "heinz@druckkultur.demo",
+    phone: "+49 30 0000 1102",
     password: "demo",
     roleLabel: "Geschäftsführung & Beratung",
     initials: "HS",
@@ -68,6 +70,7 @@ export const initialUsers = [
     name: "Mirco Gruber",
     firstName: "Mirco",
     email: "mirco@druckkultur.demo",
+    phone: "+49 30 0000 1103",
     password: "demo",
     roleLabel: "Mailing & Digitaldruck",
     initials: "MG",
@@ -81,6 +84,7 @@ export const initialUsers = [
     name: "Laura Schneider",
     firstName: "Laura",
     email: "laura@vitanova.demo",
+    phone: "+49 30 0000 2101",
     password: "demo",
     roleLabel: "Teamleitung Marketing",
     initials: "LS",
@@ -93,6 +97,7 @@ export const initialUsers = [
     name: "Maria Müller",
     firstName: "Maria",
     email: "maria@vitanova.demo",
+    phone: "+49 30 0000 2102",
     password: "demo",
     roleLabel: "Marketing",
     initials: "MM",
@@ -105,6 +110,7 @@ export const initialUsers = [
     name: "Thomas Weber",
     firstName: "Thomas",
     email: "thomas@vitanova.demo",
+    phone: "+49 30 0000 2103",
     password: "demo",
     roleLabel: "Qualitätssicherung",
     initials: "TW",
@@ -117,6 +123,7 @@ export const initialUsers = [
     name: "Sabine König",
     firstName: "Sabine",
     email: "sabine@musterwerke.demo",
+    phone: "+49 30 0000 3101",
     password: "demo",
     roleLabel: "Leitung Marketing & Einkauf",
     initials: "SK",
@@ -129,6 +136,7 @@ export const initialUsers = [
     name: "David Hartmann",
     firstName: "David",
     email: "david@musterwerke.demo",
+    phone: "+49 30 0000 3102",
     password: "demo",
     roleLabel: "Produktmarketing",
     initials: "DH",
@@ -141,6 +149,7 @@ export const initialUsers = [
     name: "Nina Berger",
     firstName: "Nina",
     email: "nina@musterwerke.demo",
+    phone: "+49 30 0000 3103",
     password: "demo",
     roleLabel: "Einkauf",
     initials: "NB",
@@ -153,6 +162,7 @@ export const initialUsers = [
     name: "Lena Hofmann",
     firstName: "Lena",
     email: "lena@alpenkraft.demo",
+    phone: "+49 30 0000 4101",
     password: "demo",
     roleLabel: "Brand Management",
     initials: "LH",
@@ -165,6 +175,7 @@ export const initialUsers = [
     name: "Jonas Meier",
     firstName: "Jonas",
     email: "jonas@alpenkraft.demo",
+    phone: "+49 30 0000 4102",
     password: "demo",
     roleLabel: "Produktmanagement",
     initials: "JM",
@@ -458,4 +469,20 @@ export const initialDocuments = [
   { id: 6, companyId: "musterwerke", projectId: "DK-260201", title: "Materialvergleich Klebstoff", type: "Beratung", version: "V1", date: "06.08.2026", size: "780 KB", financial: false },
   { id: 7, companyId: "alpenkraft", projectId: "DK-260176", title: "Konstruktion Geschenkverpackung", type: "Stanzzeichnung", version: "V3", date: "04.08.2026", size: "2,1 MB", financial: false },
   { id: 8, companyId: "alpenkraft", projectId: "DK-260143", title: "Lieferschein Produktkarten", type: "Lieferschein", version: "", date: "30.07.2026", size: "104 KB", financial: true }
+];
+
+
+export const initialCallbacks = [
+  {
+    id: "cb-demo-1",
+    companyId: "musterwerke",
+    requesterUserId: "muster-david",
+    assignedUserId: "dk-andreas",
+    phone: "+49 30 0000 3102",
+    subject: "Kurze Abstimmung zum Herbstmailing",
+    preferredTime: "Möglichst bald",
+    requestedAt: "Heute, 09:42 Uhr",
+    status: "pending",
+    completedAt: ""
+  }
 ];
