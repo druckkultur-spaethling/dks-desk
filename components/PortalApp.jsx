@@ -11,7 +11,7 @@ import {
   initialUsers
 } from "@/data/mock-data";
 
-const APP_VERSION = "2.2";
+const APP_VERSION = "2.3";
 const STORAGE_KEY = "druckkultur-desk-demo-v2.2";
 const FILE_DB = "druckkultur-desk-files";
 const FILE_STORE = "uploads";

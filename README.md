@@ -1,8 +1,13 @@
-# druckkultur desk – Vorführversion 2.2
+# druckkultur desk – Vorführversion 2.3
+
+
+## Webflow-Build-Fix in Version 2.3
+
+Die API-Route `app/api/analyze-order/route.js` verwendet jetzt die Node.js Runtime statt der Edge Runtime. Dadurch kann Webflow Cloud die PDF-Auswertung mit OpenNext korrekt bündeln.
 
 Next.js-Webapp für einen persönlichen digitalen Projektraum zwischen druckkultur und ihren Kunden. Die Anwendung ist bewusst kein Online-Shop. Sie verbindet persönliche Beratung, Projekte, Nachrichten, Dokumente, Freigaben und Gesprächswünsche in einem gemeinsamen Arbeitsraum.
 
-## Änderungen in Version 2.2
+## Änderungen in Version 2.3
 
 - Neue Kundenprojekte erhalten pro Benutzer einen eigenen Ungelesen-Status.
 - Projektzähler erscheinen am Menüpunkt **Projekte**, bei jeder Firma und in der Firmenübersicht.

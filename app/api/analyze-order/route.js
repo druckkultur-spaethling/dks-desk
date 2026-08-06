@@ -1,13 +1,7 @@
-export const runtime = "edge";
+export const runtime = "nodejs";
 
 function arrayBufferToBase64(buffer) {
-  const bytes = new Uint8Array(buffer);
-  let binary = "";
-  const chunkSize = 0x8000;
-  for (let index = 0; index < bytes.length; index += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(index, Math.min(index + chunkSize, bytes.length)));
-  }
-  return btoa(binary);
+  return Buffer.from(buffer).toString("base64");
 }
 
 function demoResult(fileName, company) {
