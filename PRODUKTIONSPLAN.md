@@ -1,151 +1,90 @@
-# Produktionsplan für den Pilotbetrieb
+# Produktionsplan – druckkultur desk ab Version 2.5
 
-## 1. Authentifizierung und Sitzungen
+Version 2.5 schafft einen realen gemeinsamen Daten- und Dateispeicher in Webflow Cloud. Sie ist damit für Mehrgeräte-Tests geeignet. Für den Einsatz mit echten Kunden sind die folgenden Schritte erforderlich.
 
-- Kunden- und Mitarbeiterkonten serverseitig trennen
-- Passkeys oder sichere Einmal-Links bevorzugen
-- Passwort-Reset, Kontosperre und Zwei-Faktor-Anmeldung vorsehen
-- Sitzungen mit sicheren, HTTP-only Cookies verwalten
-- Loginversuche und sicherheitsrelevante Änderungen protokollieren
+## 1. Serverseitige Anmeldung
 
-## 2. Mandantenmodell
+- Passwörter nur als Argon2id- oder vergleichbare sichere Hashes speichern
+- Anmeldung über serverseitige API
+- HTTP-only-, Secure- und SameSite-Cookies
+- Passkeys oder Zwei-Faktor-Authentisierung
+- Sperrung und Ablauf von Sitzungen
+- Schutz gegen Brute-Force-Angriffe
 
-- Tabelle `companies` für jede Kundenfirma
-- Tabelle `users` für Kunden und druckkultur-Mitarbeiter
-- Tabelle `company_memberships` für Zuordnung und Rollen
-- ein Mitarbeiter kann mehrere Firmen betreuen
-- ein Kundenbenutzer gehört normalerweise zu genau einer Firma
-- jede Datenabfrage muss serverseitig auf die Firmenzuordnung geprüft werden
+## 2. Serverseitige Mandantentrennung
 
-## 3. Rechte
+Derzeit wird der gemeinsame Zustand für die Vorführung als ein Datenbestand synchronisiert. Produktiv muss jede API-Anfrage serverseitig prüfen:
 
-Empfohlene einzelne Berechtigungen:
+- welcher Benutzer angemeldet ist
+- zu welcher Firma er gehört
+- welche Firmen ein interner Mitarbeiter betreuen darf
+- welches Projekt sichtbar ist
+- welche Felder und Dokumentarten geändert werden dürfen
 
-- alle Projekte der Firma sehen
-- nur zugewiesene Projekte sehen
-- neue Projekte anfragen
-- Druckdaten verbindlich freigeben
-- Angebote und Rechnungen sehen
-- Dokumente herunterladen
-- Benutzer einladen und sperren
-- Rechte verwalten
-- Firmenlogo und Farbwelt verwalten
+Kundendaten dürfen nicht nur in der Oberfläche gefiltert werden.
 
-Keine Berechtigung darf ausschließlich im Frontend geprüft werden.
+## 3. Relationales Datenmodell
 
-## 4. Projekte und Zuordnung
+Die Vorführung speichert den Zustand in einem gemeinsamen SQLite-Dokument. Produktiv sollte dieser in einzelne Tabellen aufgeteilt werden:
 
-- Projekte gehören immer zu einer Firma
-- Projektmitglieder bilden die begrenzte Sicht einzelner Kundenbenutzer ab
-- Teamleitungen erhalten über eine Rolle automatisch Zugriff auf alle Firmenprojekte
-- druckkultur-Mitarbeiter sehen nur die ihnen zugeordneten Firmen
-- Vertretungs- und Urlaubsregeln ergänzen
+- companies
+- users
+- company_memberships
+- projects
+- project_assignments
+- project_changes
+- project_status_history
+- messages
+- message_reads
+- documents
+- callbacks
+- sessions
+- audit_log
 
-## 5. Nachrichten und Lesestatus
+Damit lassen sich gleichzeitige Änderungen sauberer zusammenführen und gezielte Rechteprüfungen durchführen.
 
-- Nachrichten projektbezogen speichern
-- Zustellung, gelesen am und gelesen von protokollieren
-- Ungelesen-Zähler pro Firma und pro Projekt berechnen
-- Mitarbeiter erhalten eine firmenübergreifende Reaktionswarteschlange
-- E-Mail-Benachrichtigungen enthalten keine vertraulichen Druckdaten
-- Antworten per E-Mail optional über eindeutige Projektadressen zuordnen
+## 4. Dateiablage
 
-## 6. Kundenbranding
+Webflow Object Storage ist bereits angebunden. Produktiv zusätzlich:
 
-- Logo in einem sicheren Objektspeicher ablegen
-- Bildformate, Dateigröße und Schadcode prüfen
-- Farbwerte auf gültige Formate und ausreichende Kontraste prüfen
-- Branding bleibt kundenspezifisch; „betreut von druckkultur“ bleibt sichtbar
+- erlaubte Dateitypen serverseitig prüfen
+- tatsächlichen Dateityp statt nur Dateiendung erkennen
+- Virenscan
+- Dateigrößen und Speicherkontingente pro Firma
+- sichere, zeitlich begrenzte Download-URLs
+- Versionierung
+- Aufbewahrungs- und Löschregeln
+- Protokollierung jedes Downloads
 
-## 7. Dateien und Freigaben
+## 5. Projektänderungen
 
-- große PDF- und Druckdateien nicht in der relationalen Datenbank speichern
-- Objektspeicher mit zeitlich begrenzten Download-Links verwenden
-- Virenscan und Dateitypprüfung vor Freigabe
-- Versionen eindeutig kennzeichnen
-- Freigaben mit Benutzer, Zeitpunkt, Version, Kommentar und IP-/Sitzungsreferenz protokollieren
-- alte Versionen dürfen nicht versehentlich erneut freigegeben werden
+Version 2.5 protokolliert Änderungen bereits sichtbar im Projekt. Produktiv sollte das Audit-Log unveränderbar speichern:
 
-## 8. Mitarbeiter-Cockpit
+- Benutzer-ID
+- Zeitpunkt
+- Firma und Projekt
+- Feldname
+- alter Wert
+- neuer Wert
+- IP-/Sitzungsreferenz
+- Grund der Änderung
 
-- Firmenliste mit Ungelesen-Zähler und offenen Entscheidungen
-- Filter nach eigener Zuständigkeit, Vertretung und Dringlichkeit
-- neue Vorgänge anderer Firmen bleiben beim Firmenwechsel sichtbar
-- feste Reaktionsregeln und Eskalation bei unbeantworteten Nachrichten
-- keine künstliche „Live-Chat“-Erwartung ohne besetztes Team erzeugen
+Freigaben dürfen nicht durch spätere Änderungen überschrieben werden.
 
-## 9. Integration
+## 6. Echtzeit
 
-- Leseschnittstelle zur bestehenden Auftragsübersicht und Plantafel
-- kundenrelevante Statuswerte aus internen Statuswerten ableiten
-- Angebote, Auftragsbestätigungen und Lieferscheine automatisch zuordnen
-- später PPWR-, EUDR- und Materialdokumente bereitstellen
-- Änderungen möglichst nur in einem führenden System pflegen
+Die Vorführung fragt alle fünf Sekunden nach neuen Revisionen. Später möglich:
 
-## 10. Pilotkennzahlen
+- Server-Sent Events oder WebSockets
+- gezielte Aktualisierung einzelner Firmen und Projekte
+- Benachrichtigungen bei Nachricht, Rückruf, Freigabe und Projektänderung
+- E-Mail- oder Teams-Hinweise als Ergänzung
 
-- Zeit bis zur ersten persönlichen Reaktion
-- Anzahl ungeklärter Nachrichten je Firma
-- Anteil digitaler Freigaben
-- Zahl falscher Dateiversionen
-- vermiedene Statusanfragen per Telefon oder E-Mail
-- Nutzung durch Teamleiter und eingeschränkte Benutzer
-- subjektiver Nutzen für Kunde und druckkultur-Team
+## 7. Backups und Betrieb
 
-## 11. Rückrufwünsche und Telefonintegration
-
-- Telefonnummern im Benutzerprofil serverseitig speichern und formatieren
-- Rückrufwunsch mit Firma, Kunde, Anlass, Zeitwunsch und zuständigem Mitarbeiter speichern
-- Mitarbeiter-Popup zusätzlich über Push, Teams oder Desktop-Benachrichtigung auslösen
-- offene Rückrufe in einer zentralen Warteschlange anzeigen
-- Status `offen`, `angenommen`, `erledigt` und optional `nicht erreicht` vorsehen
-- Klick auf „Anrufen“ über `tel:` oder die Schnittstelle der vorhandenen Telefonanlage auslösen
-- Telefonate und kurze Gesprächsnotizen dem Kunden oder Projekt zuordnen
-- Rückrufwünsche bei Abwesenheit automatisch an die Vertretung weitergeben
-
-## 12. Dateiablage und Upload
-
-Die Vorführversion verwendet IndexedDB im Browser. Im Produktivbetrieb:
-
-- Upload direkt in einen geschützten Objektspeicher
-- Größenlimits je Rolle und Dateityp
-- Virenscan vor Freigabe für andere Benutzer
-- Prüfsumme, Version und Uploader protokollieren
-- zeitlich begrenzte Download-Links verwenden
-- große Druck-PDFs mit unterbrochenen Uploads fortsetzen können
-- Vorschaubilder und PDF-Seiten serverseitig erzeugen
-
-## 13. Dokumentarten und Dokumentenworkflow
-
-- Dokumentarten abhängig von Rolle und Projektschritt anbieten
-- Kunden: Druckdaten, Anfrage, Bestellung, AB-Mahnung, Liefermahnung, Sonstiges
-- druckkultur: Angebot, AB, Freigabedaten, Lieferschein, Sonstiges
-- eigene Dokumentarten später administrierbar machen
-- Dokumentart, Version, Uploader, Zeitpunkt und Sichtbarkeit serverseitig speichern
-- Finanzdokumente nur für berechtigte Benutzer anzeigen
-- neue Dokumente als Ereignis im Projektverlauf protokollieren
-
-## 14. Bestell-PDF und KI-Auswertung
-
-- PDF nur nach ausdrücklichem Upload des Benutzers analysieren
-- API-Schlüssel ausschließlich serverseitig speichern
-- erkannte Angaben nie ungeprüft verbindlich übernehmen
-- Bestellnummer, Produkt, Menge, Format, Material, Termin und Besonderheiten extrahieren
-- Unsicherheiten und leere Felder klar markieren
-- Original-PDF dem Projekt als Bestellung zuordnen
-- Datenschutzhinweis und Löschfristen für externe KI-Verarbeitung festlegen
-- optional eigene lokale Dokumentenerkennung für besonders vertrauliche Kunden prüfen
-
-## 15. Gesprächswünsche über Telefon und Teams
-
-- Benutzerprofil enthält Telefonnummer und Teams-Konto
-- Kunde wählt pro Anfrage den gewünschten Kontaktweg
-- Mitarbeiter sieht Kontaktweg bereits im Popup
-- Telefon über vorhandenes Softphone oder Telefonanlagen-API auslösen
-- Teams über Deep Link oder Microsoft Graph anbinden
-- Status offen, angenommen, nicht erreicht und erledigt vorsehen
-
-
-## Vertrauliche Bestellunterlagen
-
-Bestell-PDFs dürfen in der Produktivversion nicht in Demodaten, Logs oder GitHub-Repositories übernommen werden. Für die KI-Auswertung sind serverseitige Verarbeitung, kurze Aufbewahrungsfristen, Zugriffskontrollen und eine nachvollziehbare Löschung vorzusehen.
+- automatische Webflow-Cloud-Backups kontrollieren
+- Export- und Wiederherstellungsprozess testen
+- Monitoring für API-Fehler und Speicherausfälle
+- getrennte Test- und Produktionsumgebung
+- keine echten Daten in der Demo-Environment
+- regelmäßige Rechte- und Sicherheitsprüfung

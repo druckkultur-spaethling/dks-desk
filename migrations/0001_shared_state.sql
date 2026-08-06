@@ -1,0 +1,14 @@
+CREATE TABLE IF NOT EXISTS app_state (
+  id TEXT PRIMARY KEY,
+  data TEXT NOT NULL,
+  revision INTEGER NOT NULL DEFAULT 1,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS sync_audit (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  revision INTEGER NOT NULL,
+  actor_user_id TEXT,
+  event TEXT,
+  created_at TEXT NOT NULL
+);

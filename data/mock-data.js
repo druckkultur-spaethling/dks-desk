@@ -51,7 +51,7 @@ export const initialUsers = [
     initials: "AB",
     availabilityStatus: "available",
     companyIds: ["vitanova", "musterwerke"],
-    rights: { manageCompanies: true, viewAllProjects: true, approve: true, viewFinancials: true }
+    rights: { manageCompanies: true, viewAllProjects: true, editProjects: true, approve: true, viewFinancials: true }
   },
   {
     id: "dk-heinz",
@@ -66,7 +66,7 @@ export const initialUsers = [
     initials: "HS",
     availabilityStatus: "busy",
     companyIds: ["vitanova", "alpenkraft", "musterwerke"],
-    rights: { manageCompanies: true, viewAllProjects: true, approve: true, viewFinancials: true }
+    rights: { manageCompanies: true, viewAllProjects: true, editProjects: true, approve: true, viewFinancials: true }
   },
   {
     id: "dk-mirco",
@@ -81,7 +81,7 @@ export const initialUsers = [
     initials: "MG",
     availabilityStatus: "meeting",
     companyIds: ["musterwerke", "alpenkraft"],
-    rights: { manageCompanies: false, viewAllProjects: true, approve: true, viewFinancials: true }
+    rights: { manageCompanies: false, viewAllProjects: true, editProjects: true, approve: true, viewFinancials: true }
   },
   {
     id: "vita-laura",
@@ -95,7 +95,7 @@ export const initialUsers = [
     password: "demo",
     roleLabel: "Teamleitung Marketing",
     initials: "LS",
-    rights: { viewAllProjects: true, manageCompany: true, manageUsers: true, approve: true, viewFinancials: true, createRequests: true }
+    rights: { viewAllProjects: true, editProjects: true, manageCompany: true, manageUsers: true, approve: true, viewFinancials: true, createRequests: true }
   },
   {
     id: "vita-maria",
@@ -109,7 +109,7 @@ export const initialUsers = [
     password: "demo",
     roleLabel: "Marketing",
     initials: "MM",
-    rights: { viewAllProjects: false, manageCompany: false, manageUsers: false, approve: true, viewFinancials: false, createRequests: true }
+    rights: { viewAllProjects: false, editProjects: true, manageCompany: false, manageUsers: false, approve: true, viewFinancials: false, createRequests: true }
   },
   {
     id: "vita-thomas",
@@ -123,7 +123,7 @@ export const initialUsers = [
     password: "demo",
     roleLabel: "Qualitätssicherung",
     initials: "TW",
-    rights: { viewAllProjects: false, manageCompany: false, manageUsers: false, approve: true, viewFinancials: false, createRequests: false }
+    rights: { viewAllProjects: false, editProjects: false, manageCompany: false, manageUsers: false, approve: true, viewFinancials: false, createRequests: false }
   },
   {
     id: "muster-sabine",
@@ -137,7 +137,7 @@ export const initialUsers = [
     password: "demo",
     roleLabel: "Leitung Marketing & Einkauf",
     initials: "SK",
-    rights: { viewAllProjects: true, manageCompany: true, manageUsers: true, approve: true, viewFinancials: true, createRequests: true }
+    rights: { viewAllProjects: true, editProjects: true, manageCompany: true, manageUsers: true, approve: true, viewFinancials: true, createRequests: true }
   },
   {
     id: "muster-david",
@@ -151,7 +151,7 @@ export const initialUsers = [
     password: "demo",
     roleLabel: "Produktmarketing",
     initials: "DH",
-    rights: { viewAllProjects: false, manageCompany: false, manageUsers: false, approve: true, viewFinancials: false, createRequests: true }
+    rights: { viewAllProjects: false, editProjects: true, manageCompany: false, manageUsers: false, approve: true, viewFinancials: false, createRequests: true }
   },
   {
     id: "muster-nina",
@@ -165,7 +165,7 @@ export const initialUsers = [
     password: "demo",
     roleLabel: "Einkauf",
     initials: "NB",
-    rights: { viewAllProjects: true, manageCompany: false, manageUsers: false, approve: false, viewFinancials: true, createRequests: true }
+    rights: { viewAllProjects: true, editProjects: false, manageCompany: false, manageUsers: false, approve: false, viewFinancials: true, createRequests: true }
   },
   {
     id: "alpen-lena",
@@ -179,7 +179,7 @@ export const initialUsers = [
     password: "demo",
     roleLabel: "Brand Management",
     initials: "LH",
-    rights: { viewAllProjects: true, manageCompany: true, manageUsers: true, approve: true, viewFinancials: true, createRequests: true }
+    rights: { viewAllProjects: true, editProjects: true, manageCompany: true, manageUsers: true, approve: true, viewFinancials: true, createRequests: true }
   },
   {
     id: "alpen-jonas",
@@ -193,7 +193,7 @@ export const initialUsers = [
     password: "demo",
     roleLabel: "Produktmanagement",
     initials: "JM",
-    rights: { viewAllProjects: false, manageCompany: false, manageUsers: false, approve: true, viewFinancials: false, createRequests: true }
+    rights: { viewAllProjects: false, editProjects: true, manageCompany: false, manageUsers: false, approve: true, viewFinancials: false, createRequests: true }
   }
 ];
 

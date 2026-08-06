@@ -11,10 +11,9 @@ import {
   initialUsers
 } from "@/data/mock-data";
 
-const APP_VERSION = "2.4";
-const STORAGE_KEY = "druckkultur-desk-demo-v2.2";
-const FILE_DB = "druckkultur-desk-files";
-const FILE_STORE = "uploads";
+const APP_VERSION = "2.5";
+const SESSION_KEY = "druckkultur-desk-session-v2.5";
+const API_BASE = process.env.NEXT_PUBLIC_BASE_PATH || "";
 
 const baseNav = [
   { id: "dashboard", label: "Übersicht", icon: "home" },
@@ -107,7 +106,7 @@ function optimizeLogoFile(file) {
     const image = new Image();
     image.onload = () => {
       try {
-        const maxSize = 420;
+        const maxSize = 320;
         const scale = Math.min(1, maxSize / Math.max(image.naturalWidth || maxSize, image.naturalHeight || maxSize));
         const canvas = document.createElement("canvas");
         canvas.width = Math.max(1, Math.round((image.naturalWidth || maxSize) * scale));
@@ -115,7 +114,7 @@ function optimizeLogoFile(file) {
         const context = canvas.getContext("2d");
         if (!context) throw new Error("Logo konnte nicht verarbeitet werden.");
         context.drawImage(image, 0, 0, canvas.width, canvas.height);
-        const dataUrl = canvas.toDataURL("image/webp", 0.88);
+        const dataUrl = canvas.toDataURL("image/webp", 0.8);
         URL.revokeObjectURL(url);
         if (!dataUrl || dataUrl === "data:,") throw new Error("Logo konnte nicht gespeichert werden.");
         resolve(dataUrl);
@@ -132,6 +131,10 @@ function canSeeProject(user, project) {
   if (!user || !project) return false;
   if (user.type === "internal") return user.companyIds.includes(project.companyId);
   return user.companyId === project.companyId && Boolean(user.rights.viewAllProjects || project.ownerUserIds.includes(user.id));
+}
+function canEditProject(user, project) {
+  if (!user || !project || !user.rights?.editProjects) return false;
+  return canSeeProject(user, project);
 }
 function threadIdForMessage(message) { return message.threadId || `project:${message.projectId}`; }
 function directThreadId(companyId, firstId, secondId) { return `direct:${companyId}:${[firstId, secondId].sort().join(":")}`; }
@@ -195,9 +198,12 @@ function normalizeProjectForVersion(project) {
 }
 
 function normalizeUserForVersion(user) {
-  return user.type === "internal" && !user.availabilityStatus
-    ? { ...user, availabilityStatus: "available" }
-    : user;
+  const defaultEdit = user.type === "internal" || Boolean(user.rights?.manageCompany || user.rights?.manageUsers);
+  return {
+    ...user,
+    availabilityStatus: user.type === "internal" ? (user.availabilityStatus || "available") : user.availabilityStatus,
+    rights: { ...user.rights, editProjects: user.rights?.editProjects ?? defaultEdit }
+  };
 }
 
 function isProjectNewFor(project, user) {
@@ -206,6 +212,22 @@ function isProjectNewFor(project, user) {
   return canSeeProject(user, project);
 }
 
+
+
+function normalizeSharedState(state = {}) {
+  return {
+    companies: Array.isArray(state.companies) ? state.companies.map(normalizeCompanyForVersion) : initialCompanies.map(normalizeCompanyForVersion),
+    users: Array.isArray(state.users) ? state.users.map(normalizeUserForVersion) : initialUsers.map(normalizeUserForVersion),
+    projects: Array.isArray(state.projects) ? state.projects.map(normalizeProjectForVersion) : initialProjects.map(normalizeProjectForVersion),
+    messages: Array.isArray(state.messages) ? state.messages : initialMessages,
+    documents: Array.isArray(state.documents) ? state.documents : initialDocuments,
+    callbacks: Array.isArray(state.callbacks) ? state.callbacks : initialCallbacks
+  };
+}
+
+function serializeSharedState({ companies, users, projects, messages, documents, callbacks }) {
+  return JSON.stringify({ companies, users, projects, messages, documents, callbacks });
+}
 
 function normalizeWorkflowSteps(steps = []) {
   let currentAssigned = false;
@@ -220,36 +242,6 @@ function normalizeWorkflowSteps(steps = []) {
   });
 }
 
-function openFileDb() {
-  return new Promise((resolve, reject) => {
-    if (!("indexedDB" in window)) return reject(new Error("IndexedDB wird nicht unterstützt."));
-    const request = window.indexedDB.open(FILE_DB, 1);
-    request.onupgradeneeded = () => { if (!request.result.objectStoreNames.contains(FILE_STORE)) request.result.createObjectStore(FILE_STORE); };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-}
-async function saveFileBlob(key, file) {
-  const db = await openFileDb();
-  await new Promise((resolve, reject) => {
-    const tx = db.transaction(FILE_STORE, "readwrite");
-    tx.objectStore(FILE_STORE).put(file, key);
-    tx.oncomplete = resolve;
-    tx.onerror = () => reject(tx.error);
-  });
-  db.close();
-}
-async function loadFileBlob(key) {
-  const db = await openFileDb();
-  const value = await new Promise((resolve, reject) => {
-    const tx = db.transaction(FILE_STORE, "readonly");
-    const request = tx.objectStore(FILE_STORE).get(key);
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-  db.close();
-  return value;
-}
 function triggerDownload(blob, filename) {
   const url = URL.createObjectURL(blob);
   const link = window.document.createElement("a");
@@ -262,12 +254,13 @@ function triggerDownload(blob, filename) {
 }
 
 export default function PortalApp() {
-  const [companies, setCompanies] = useState(() => initialCompanies.map(normalizeCompanyForVersion));
-  const [users, setUsers] = useState(() => initialUsers.map(normalizeUserForVersion));
-  const [projects, setProjects] = useState(() => initialProjects.map(normalizeProjectForVersion));
-  const [messages, setMessages] = useState(initialMessages);
-  const [documents, setDocuments] = useState(initialDocuments);
-  const [callbacks, setCallbacks] = useState(initialCallbacks);
+  const initialState = normalizeSharedState();
+  const [companies, setCompanies] = useState(initialState.companies);
+  const [users, setUsers] = useState(initialState.users);
+  const [projects, setProjects] = useState(initialState.projects);
+  const [messages, setMessages] = useState(initialState.messages);
+  const [documents, setDocuments] = useState(initialState.documents);
+  const [callbacks, setCallbacks] = useState(initialState.callbacks);
   const [currentUserId, setCurrentUserId] = useState(null);
   const [selectedCompanyId, setSelectedCompanyId] = useState(null);
   const [selectedProjectId, setSelectedProjectId] = useState(null);
@@ -276,42 +269,128 @@ export default function PortalApp() {
   const [notice, setNotice] = useState("");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const [syncStatus, setSyncStatus] = useState("loading");
+  const [lastSyncedAt, setLastSyncedAt] = useState("");
   const [messageTargetUserId, setMessageTargetUserId] = useState(null);
   const [callbackTargetUserId, setCallbackTargetUserId] = useState(null);
   const [dismissedCallbacks, setDismissedCallbacks] = useState([]);
-  const storageWarningShown = useRef(false);
+  const revisionRef = useRef(0);
+  const lastSerializedRef = useRef("");
+  const saveTimerRef = useRef(null);
+  const savingRef = useRef(false);
+  const lastEventRef = useRef("Daten aktualisiert");
+
+  function applyRemoteState(payload, announce = false) {
+    const normalized = normalizeSharedState(payload.state);
+    const serialized = serializeSharedState(normalized);
+    lastSerializedRef.current = serialized;
+    revisionRef.current = Number(payload.revision || 1);
+    setCompanies(normalized.companies);
+    setUsers(normalized.users);
+    setProjects(normalized.projects);
+    setMessages(normalized.messages);
+    setDocuments(normalized.documents);
+    setCallbacks(normalized.callbacks);
+    setLastSyncedAt(payload.updatedAt || new Date().toISOString());
+    setSyncStatus("online");
+    if (announce) setNotice("Neue Änderungen von einem anderen Gerät wurden geladen.");
+  }
+
+  async function loadSharedState(announce = false) {
+    const response = await fetch(`${API_BASE}/api/state`, { cache: "no-store" });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || "Gemeinsame Daten konnten nicht geladen werden.");
+    if (Number(payload.revision || 0) > revisionRef.current || !lastSerializedRef.current) applyRemoteState(payload, announce);
+    else { setSyncStatus("online"); setLastSyncedAt(payload.updatedAt || lastSyncedAt); }
+    return payload;
+  }
 
   useEffect(() => {
-    try {
-      const saved = window.localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed.companies)) setCompanies(parsed.companies.map(normalizeCompanyForVersion));
-        if (Array.isArray(parsed.users)) setUsers(parsed.users.map(normalizeUserForVersion));
-        if (Array.isArray(parsed.projects)) setProjects(parsed.projects.map(normalizeProjectForVersion));
-        if (Array.isArray(parsed.messages)) setMessages(parsed.messages);
-        if (Array.isArray(parsed.documents)) setDocuments(parsed.documents);
-        if (Array.isArray(parsed.callbacks)) setCallbacks(parsed.callbacks);
-        if (typeof parsed.currentUserId === "string") setCurrentUserId(parsed.currentUserId);
-        if (typeof parsed.selectedCompanyId === "string") setSelectedCompanyId(parsed.selectedCompanyId);
+    let cancelled = false;
+    async function boot() {
+      try {
+        const savedSession = window.sessionStorage.getItem(SESSION_KEY);
+        if (savedSession) {
+          const parsed = JSON.parse(savedSession);
+          if (typeof parsed.currentUserId === "string") setCurrentUserId(parsed.currentUserId);
+          if (typeof parsed.selectedCompanyId === "string") setSelectedCompanyId(parsed.selectedCompanyId);
+        }
+        const response = await fetch(`${API_BASE}/api/state`, { cache: "no-store" });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "Gemeinsame Daten konnten nicht geladen werden.");
+        if (!cancelled) applyRemoteState(payload);
+      } catch (error) {
+        console.error("Gemeinsamer Datenstand konnte nicht geladen werden.", error);
+        if (!cancelled) {
+          const fallback = normalizeSharedState();
+          lastSerializedRef.current = serializeSharedState(fallback);
+          setSyncStatus("error");
+          setNotice("Die gemeinsame Webflow-Datenbank ist nicht erreichbar. Änderungen werden derzeit nicht dauerhaft gespeichert.");
+        }
+      } finally {
+        if (!cancelled) setHydrated(true);
       }
-    } catch (error) { console.warn("Vorführstand konnte nicht geladen werden.", error); }
-    finally { setHydrated(true); }
+    }
+    boot();
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
     if (!hydrated) return;
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ companies, users, projects, messages, documents, callbacks, currentUserId, selectedCompanyId }));
-      storageWarningShown.current = false;
-    } catch (error) {
-      console.error("Vorführstand konnte nicht gespeichert werden.", error);
-      if (!storageWarningShown.current) {
-        storageWarningShown.current = true;
-        setNotice("Der Browserspeicher ist voll. Bitte ein kleineres Logo verwenden oder die Vorführung zurücksetzen.");
+    window.sessionStorage.setItem(SESSION_KEY, JSON.stringify({ currentUserId, selectedCompanyId }));
+  }, [hydrated, currentUserId, selectedCompanyId]);
+
+  useEffect(() => {
+    if (!hydrated || !lastSerializedRef.current) return undefined;
+    const serialized = serializeSharedState({ companies, users, projects, messages, documents, callbacks });
+    if (serialized === lastSerializedRef.current) return undefined;
+    if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+    setSyncStatus("saving");
+    saveTimerRef.current = window.setTimeout(async () => {
+      saveTimerRef.current = null;
+      savingRef.current = true;
+      try {
+        const response = await fetch(`${API_BASE}/api/state`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            state: JSON.parse(serialized),
+            revision: revisionRef.current,
+            actorUserId: currentUserId,
+            event: lastEventRef.current
+          })
+        });
+        const payload = await response.json();
+        if (response.status === 409 && payload.state) {
+          applyRemoteState(payload);
+          setNotice("Ein anderer Benutzer hat gleichzeitig Änderungen gespeichert. Der neueste gemeinsame Stand wurde geladen; bitte Ihre Änderung erneut prüfen.");
+          return;
+        }
+        if (!response.ok) throw new Error(payload.error || "Änderungen konnten nicht gespeichert werden.");
+        revisionRef.current = Number(payload.revision);
+        lastSerializedRef.current = serialized;
+        setLastSyncedAt(payload.updatedAt || new Date().toISOString());
+        setSyncStatus("online");
+        lastEventRef.current = "Daten aktualisiert";
+      } catch (error) {
+        console.error("Gemeinsames Speichern fehlgeschlagen.", error);
+        setSyncStatus("error");
+        setNotice(error.message || "Änderungen konnten nicht gemeinsam gespeichert werden.");
+      } finally {
+        savingRef.current = false;
       }
-    }
-  }, [hydrated, companies, users, projects, messages, documents, callbacks, currentUserId, selectedCompanyId]);
+    }, 650);
+    return () => { if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current); };
+  }, [hydrated, companies, users, projects, messages, documents, callbacks, currentUserId]);
+
+  useEffect(() => {
+    if (!hydrated) return undefined;
+    const timer = window.setInterval(async () => {
+      if (savingRef.current || saveTimerRef.current) return;
+      try { await loadSharedState(true); } catch (error) { console.warn("Live-Aktualisierung vorübergehend nicht erreichbar.", error); setSyncStatus("error"); }
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [hydrated]);
 
   useEffect(() => {
     if (!notice) return undefined;
@@ -323,14 +402,14 @@ export default function PortalApp() {
   useEffect(() => {
     if (!currentUser) return;
     if (currentUser.type === "customer") setSelectedCompanyId(currentUser.companyId);
-    else if (!selectedCompanyId || !currentUser.companyIds.includes(selectedCompanyId)) setSelectedCompanyId(currentUser.companyIds[0] || null);
+    else if (selectedCompanyId && !currentUser.companyIds.includes(selectedCompanyId)) setSelectedCompanyId(null);
   }, [currentUser, selectedCompanyId]);
 
   const accessibleCompanies = useMemo(() => {
     if (!currentUser) return [];
     return companies.filter((company) => currentUser.type === "internal" ? currentUser.companyIds.includes(company.id) : company.id === currentUser.companyId);
   }, [companies, currentUser]);
-  const currentCompany = getCompany(companies, selectedCompanyId) || accessibleCompanies[0] || null;
+  const currentCompany = getCompany(companies, selectedCompanyId) || (currentUser?.type === "customer" ? accessibleCompanies[0] : null) || null;
 
   const visibleProjects = useMemo(() => {
     if (!currentUser || !currentCompany) return [];
@@ -387,7 +466,7 @@ export default function PortalApp() {
       setUsers((current) => current.map((entry) => entry.id === user.id ? { ...entry, availabilityStatus: "available", availabilityUpdatedAt: formatDateTime() } : entry));
     }
     setCurrentUserId(user.id);
-    setSelectedCompanyId(user.type === "customer" ? user.companyId : user.companyIds[0]);
+    setSelectedCompanyId(user.type === "customer" ? user.companyId : null);
     setActiveView(user.type === "internal" ? "companies" : "dashboard");
     setSelectedProjectId(null);
     setSearchTerm("");
@@ -446,7 +525,7 @@ export default function PortalApp() {
   }
 
   function updateProject(projectId, draft) {
-    if (currentUser?.type !== "internal") return;
+    if (currentUser?.type !== "internal" || !currentUser.rights?.editProjects) return setNotice("Für die Projektsteuerung fehlt diesem Mitarbeiter die Berechtigung.");
     const original = projects.find((project) => project.id === projectId);
     if (!original) return;
     const preset = statusPresets[draft.status] || statusPresets[original.status] || {};
@@ -471,6 +550,7 @@ export default function PortalApp() {
       byUserId: currentUser.id,
       at: formatDateTime()
     }] : [];
+    lastEventRef.current = `${currentUser.name} hat den Projektstatus oder Projektverlauf geändert`;
     setProjects((current) => current.map((project) => project.id === projectId ? {
       ...project,
       status: draft.status,
@@ -492,63 +572,136 @@ export default function PortalApp() {
     setNotice(workflowChanges.length ? "Erledigt-Status im Projektverlauf gespeichert." : statusChanged ? `Status „${draft.status}“ wurde gespeichert.` : "Projektangaben wurden aktualisiert.");
   }
 
-  async function uploadDocument(projectId, file, meta = {}, companyIdOverride = null) {
-      if (!file || !currentUser) return null;
-      if (file.size > 20 * 1024 * 1024) { setNotice("Für die Vorführung sind Dateien bis 20 MB möglich."); return null; }
-      const project = projects.find((item) => item.id === projectId);
-      const companyId = companyIdOverride || project?.companyId || currentCompany?.id;
-      const blobKey = `file-${Date.now()}-${file.name}`;
-      const documentType = meta.type || (currentUser.type === "internal" ? "Sonstiges" : "Druckdaten");
-      try {
-        await saveFileBlob(blobKey, file);
-        const document = {
-          id: `upload-${Date.now()}`,
-          companyId,
-          projectId,
-          title: meta.title || file.name,
-          type: documentType,
-          version: meta.version || "",
-          date: formatDate(),
-          size: formatBytes(file.size),
-          financial: typeof meta.financial === "boolean" ? meta.financial : financialDocumentTypes.has(documentType),
-          fileName: file.name,
-          mimeType: file.type,
-          blobKey,
-          uploadedBy: currentUser.id
-        };
-        setDocuments((current) => [document, ...current]);
-        setMessages((current) => [...current, {
-          id: `upload-message-${Date.now()}`,
-          companyId,
-          projectId,
-          senderUserId: currentUser.id,
-          text: `${documentType} hochgeladen: ${file.name} (${formatBytes(file.size)}).`,
-          time: "Gerade eben",
-          createdAt: new Date().toISOString(),
-          readBy: [currentUser.id]
-        }]);
-        setNotice(`„${file.name}“ wurde als ${documentType} gespeichert.`);
-        return document;
-      } catch (error) {
-        console.error(error);
-        setNotice("Der Browser konnte die Datei nicht speichern. Bitte privaten Modus verlassen oder Speicherzugriff erlauben.");
-        return null;
-      }
+  function editProjectDetails(projectId, draft) {
+    const original = projects.find((project) => project.id === projectId);
+    if (!original || !currentUser || !canEditProject(currentUser, original)) {
+      setNotice("Für die Bearbeitung dieses Projekts fehlt die Berechtigung.");
+      return false;
     }
+    const fields = [
+      ["title", "Projektname"],
+      ["category", "Produktart"],
+      ["quantity", "Auflage"],
+      ["delivery", "Liefertermin"],
+      ["format", "Format"],
+      ["material", "Material"],
+      ["customerOrderNumber", "Bestellnummer"],
+      ["reference", "Referenz"],
+      ["specification", "Ausführung"],
+      ["specialInstructions", "Besondere Hinweise"]
+    ];
+    const patch = {};
+    const changes = [];
+    fields.forEach(([key, label]) => {
+      const before = String(original[key] || "").trim();
+      const after = String(draft[key] || "").trim();
+      patch[key] = after;
+      if (before !== after) {
+        const shortBefore = before || "–";
+        const shortAfter = after || "–";
+        changes.push(`${label}: „${shortBefore.slice(0, 90)}“ → „${shortAfter.slice(0, 90)}“`);
+      }
+    });
+    if (!changes.length) {
+      setNotice("Es wurden keine Projektdaten geändert.");
+      return false;
+    }
+    const at = formatDateTime();
+    const entry = {
+      id: `project-edit-${Date.now()}`,
+      status: "Projektdaten geändert",
+      note: changes.join(" · "),
+      byUserId: currentUser.id,
+      at
+    };
+    lastEventRef.current = `${currentUser.name} hat Projektdaten geändert`;
+    setProjects((current) => current.map((project) => project.id === projectId ? {
+      ...project,
+      ...patch,
+      updated: "gerade eben",
+      statusHistory: [...(project.statusHistory || []), entry]
+    } : project));
+    setMessages((current) => [...current, {
+      id: `project-edit-message-${Date.now()}`,
+      companyId: original.companyId,
+      projectId,
+      senderUserId: currentUser.id,
+      text: `${currentUser.name} hat Projektdaten geändert: ${changes.map((change) => change.split(":")[0]).join(", ")}. Die Details stehen im Änderungsprotokoll.`,
+      time: "Gerade eben",
+      createdAt: new Date().toISOString(),
+      readBy: [currentUser.id]
+    }]);
+    setNotice("Projektänderungen wurden gespeichert, protokolliert und dem Projektteam gemeldet.");
+    return true;
+  }
+
+  async function uploadDocument(projectId, file, meta = {}, companyIdOverride = null) {
+    if (!file || !currentUser) return null;
+    if (file.size > 20 * 1024 * 1024) { setNotice("Dateien dürfen höchstens 20 MB groß sein."); return null; }
+    const project = projects.find((item) => item.id === projectId);
+    const companyId = companyIdOverride || project?.companyId || currentCompany?.id;
+    const documentType = meta.type || (currentUser.type === "internal" ? "Sonstiges" : "Druckdaten");
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("companyId", companyId || "allgemein");
+      formData.append("projectId", projectId || "ohne-projekt");
+      const response = await fetch(`${API_BASE}/api/files`, { method: "POST", body: formData });
+      const uploaded = await response.json();
+      if (!response.ok) throw new Error(uploaded.error || "Datei konnte nicht hochgeladen werden.");
+      const document = {
+        id: `upload-${Date.now()}`,
+        companyId,
+        projectId,
+        title: meta.title || file.name,
+        type: documentType,
+        version: meta.version || "",
+        date: formatDate(),
+        size: formatBytes(uploaded.size || file.size),
+        financial: typeof meta.financial === "boolean" ? meta.financial : financialDocumentTypes.has(documentType),
+        fileName: uploaded.fileName || file.name,
+        mimeType: uploaded.mimeType || file.type,
+        storageKey: uploaded.key,
+        fileUrl: `${API_BASE}/api/files?key=${encodeURIComponent(uploaded.key)}`,
+        uploadedBy: currentUser.id,
+        uploadedAt: new Date().toISOString()
+      };
+      lastEventRef.current = `${currentUser.name} hat ${documentType} hochgeladen`;
+      setDocuments((current) => [document, ...current]);
+      setMessages((current) => [...current, {
+        id: `upload-message-${Date.now()}`,
+        companyId,
+        projectId,
+        senderUserId: currentUser.id,
+        text: `${documentType} hochgeladen: ${file.name} (${formatBytes(file.size)}).`,
+        time: "Gerade eben",
+        createdAt: new Date().toISOString(),
+        readBy: [currentUser.id]
+      }]);
+      setNotice(`„${file.name}“ wurde zentral als ${documentType} gespeichert.`);
+      return document;
+    } catch (error) {
+      console.error(error);
+      setNotice(error.message || "Die Datei konnte nicht im gemeinsamen Dokumentenspeicher gespeichert werden.");
+      return null;
+    }
+  }
 
   async function downloadDocument(document, project) {
     try {
-      if (document.blobKey) {
-        const blob = await loadFileBlob(document.blobKey);
-        if (!blob) throw new Error("Datei nicht gefunden");
+      if (document.storageKey || document.fileUrl) {
+        const url = document.fileUrl || `${API_BASE}/api/files?key=${encodeURIComponent(document.storageKey)}`;
+        const response = await fetch(url, { cache: "no-store" });
+        if (!response.ok) throw new Error("Datei nicht gefunden");
+        const blob = await response.blob();
         triggerDownload(blob, document.fileName || document.title);
-        setNotice("Datei wird heruntergeladen.");
+        setNotice("Datei wird aus dem gemeinsamen Dokumentenspeicher heruntergeladen.");
         return;
       }
-      const content = ["druckkultur desk – VORFÜHRDOKUMENT", "", `Dokument: ${document.title}`, `Typ: ${document.type}`, `Projekt: ${project?.title || document.projectId}`, `Auftragsnummer: ${document.projectId}`, `Datum: ${document.date}`, "", "Dieses automatisch erstellte Dokument steht stellvertretend für die Originaldatei aus einer später angebundenen Dateiablage."].join("\n");
+      const content = ["druckkultur desk – VORFÜHRDOKUMENT", "", `Dokument: ${document.title}`, `Typ: ${document.type}`, `Projekt: ${project?.title || document.projectId}`, `Auftragsnummer: ${document.projectId}`, `Datum: ${document.date}`, "", "Dieses automatisch erstellte Dokument steht stellvertretend für eine noch nicht hochgeladene Originaldatei."].join("\n");
       triggerDownload(new Blob([content], { type: "text/plain;charset=utf-8" }), `${document.projectId}-${document.title.replace(/[^a-z0-9äöüß]+/gi, "-").toLowerCase()}.txt`);
       setNotice("Vorführdokument wird heruntergeladen.");
-    } catch (error) { console.error(error); setNotice("Die hochgeladene Datei ist in diesem Browser nicht mehr verfügbar."); }
+    } catch (error) { console.error(error); setNotice("Die Datei ist im gemeinsamen Dokumentenspeicher nicht mehr verfügbar."); }
   }
 
   async function createRequest(request, file) {
@@ -691,7 +844,7 @@ export default function PortalApp() {
     if (users.some((user) => !user.deleted && user.email.toLocaleLowerCase("de") === email)) { setNotice("Diese E-Mail-Adresse ist bereits einem Benutzer zugeordnet."); return false; }
     const id = `${companyId}-${Date.now()}`;
     const name = form.name.trim();
-    setUsers((current) => [...current, { id, type: "customer", companyId, name, firstName: name.split(/\s+/)[0], email, phone: form.phone.trim(), teamsAccount: form.teamsAccount.trim() || email, password: "demo", roleLabel: form.roleLabel.trim() || "Mitarbeiter/in", initials: deriveInitials(name), rights: { viewAllProjects: false, manageCompany: false, manageUsers: false, approve: false, viewFinancials: false, createRequests: true } }]);
+    setUsers((current) => [...current, { id, type: "customer", companyId, name, firstName: name.split(/\s+/)[0], email, phone: form.phone.trim(), teamsAccount: form.teamsAccount.trim() || email, password: "demo", roleLabel: form.roleLabel.trim() || "Mitarbeiter/in", initials: deriveInitials(name), rights: { viewAllProjects: false, editProjects: false, manageCompany: false, manageUsers: false, approve: false, viewFinancials: false, createRequests: true } }]);
     setNotice("Benutzer wurde angelegt und kann sich im Vorführmodus anmelden.");
     return true;
   }
@@ -714,18 +867,35 @@ export default function PortalApp() {
     setCallbacks((current) => current.filter((entry) => entry.requesterUserId !== target.id));
     setNotice(`${target.name} wurde gelöscht. Der Login ist gesperrt; historische Projekt- und Nachrichtenverläufe bleiben erhalten.`);
   }
-  function resetDemo() {
-    setCompanies(initialCompanies.map(normalizeCompanyForVersion)); setUsers(initialUsers.map(normalizeUserForVersion)); setProjects(initialProjects.map(normalizeProjectForVersion)); setMessages(initialMessages); setDocuments(initialDocuments); setCallbacks(initialCallbacks); setCurrentUserId(null); setSelectedCompanyId(null); setActiveView("dashboard"); setSelectedProjectId(null); window.localStorage.removeItem(STORAGE_KEY);
-    if ("indexedDB" in window) window.indexedDB.deleteDatabase(FILE_DB);
+  async function resetDemo() {
+    if (!window.confirm("Soll die gemeinsame Vorführung für alle Geräte zurückgesetzt werden? Alle Projekte, Nachrichten, Einstellungen und Dokumenteinträge werden auf den Ausgangsstand gesetzt.")) return;
+    try {
+      const response = await fetch(`${API_BASE}/api/state`, { method: "DELETE" });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Zurücksetzen fehlgeschlagen.");
+      applyRemoteState(payload);
+      setCurrentUserId(null);
+      setSelectedCompanyId(null);
+      setActiveView("dashboard");
+      setSelectedProjectId(null);
+      window.sessionStorage.removeItem(SESSION_KEY);
+      setNotice("Die gemeinsame Vorführung wurde zurückgesetzt.");
+    } catch (error) {
+      console.error(error);
+      setNotice(error.message || "Die gemeinsame Vorführung konnte nicht zurückgesetzt werden.");
+    }
   }
 
   if (!hydrated) return <div className="loading-screen">druckkultur desk wird geladen …</div>;
   if (!currentUser) return <LoginScreen users={users} companies={companies} onLogin={login} />;
 
-  const canManageCompany = currentUser.type === "internal" ? Boolean(currentUser.rights.manageCompanies) : Boolean(currentUser.rights.manageCompany || currentUser.rights.manageUsers);
+  const canManageCompany = Boolean(currentCompany) && (currentUser.type === "internal" ? Boolean(currentUser.rights.manageCompanies) : Boolean(currentUser.rights.manageCompany || currentUser.rights.manageUsers));
+  const companyNavItems = currentCompany
+    ? baseNav.filter((item) => item.id !== "request" || currentUser.type === "internal" || currentUser.rights.createRequests)
+    : [];
   const navItems = [
     ...(currentUser.type === "internal" ? [{ id: "companies", label: "Firmenübersicht", icon: "layers" }, { id: "callbacks", label: "Rückrufzentrale", icon: "phone" }] : []),
-    ...baseNav.filter((item) => item.id !== "request" || currentUser.type === "internal" || currentUser.rights.createRequests),
+    ...companyNavItems,
     ...(canManageCompany ? [{ id: "settings", label: "Firmeneinstellungen", icon: "shield" }] : [])
   ];
   const companyStyle = { "--brand": currentCompany?.primaryColor || "#0b7772", "--brand-soft": currentCompany?.accentColor || "#9ed0c8" };
@@ -733,20 +903,21 @@ export default function PortalApp() {
   return (
     <div className="portal-root" style={companyStyle}>
       <a className="skip-link" href="#main-content">Zum Hauptinhalt</a>
-      <Sidebar navItems={navItems} activeView={activeView} currentUser={currentUser} currentCompany={currentCompany} companies={accessibleCompanies} unreadByCompany={unreadByCompany} newProjectsByCompany={newProjectsByCompany} callbackByCompany={pendingCallbacksByCompany} mobileOpen={mobileMenuOpen} onNavigate={navigate} onSwitchCompany={switchCompany} onClose={() => setMobileMenuOpen(false)} onLogout={logout} onReset={resetDemo} onAvailabilityChange={updateAvailability} />
+      <Sidebar navItems={navItems} activeView={activeView} currentUser={currentUser} currentCompany={currentCompany} companies={accessibleCompanies} unreadByCompany={unreadByCompany} newProjectsByCompany={newProjectsByCompany} callbackByCompany={pendingCallbacksByCompany} mobileOpen={mobileMenuOpen} onNavigate={navigate} onSwitchCompany={switchCompany} onClose={() => setMobileMenuOpen(false)} onLogout={logout} onReset={resetDemo} onAvailabilityChange={updateAvailability} syncStatus={syncStatus} lastSyncedAt={lastSyncedAt} />
       <div className="app-column">
-        <Topbar currentUser={currentUser} currentCompany={currentCompany} searchTerm={searchTerm} unreadCount={unreadByCompany[currentCompany?.id] || 0} callbackCount={pendingCallbacksForUser.length} onSearch={setSearchTerm} onMenu={() => setMobileMenuOpen(true)} onMessages={() => navigate("messages")} onCallbacks={() => navigate("callbacks")} onLogout={logout} />
+        <Topbar currentUser={currentUser} currentCompany={currentCompany} searchTerm={searchTerm} unreadCount={unreadByCompany[currentCompany?.id] || 0} callbackCount={pendingCallbacksForUser.length} onSearch={setSearchTerm} onMenu={() => setMobileMenuOpen(true)} onMessages={() => navigate("messages")} onCallbacks={() => navigate("callbacks")} onLogout={logout} syncStatus={syncStatus} />
         <main id="main-content" tabIndex="-1" className="main-content">
           {activeView === "companies" && currentUser.type === "internal" && <CompaniesView companies={accessibleCompanies} projects={projects} unreadByCompany={unreadByCompany} newProjectsByCompany={newProjectsByCompany} callbackByCompany={pendingCallbacksByCompany} users={users} onOpen={switchCompany} />}
-          {activeView === "dashboard" && <DashboardView currentUser={currentUser} company={currentCompany} projects={visibleProjects} messages={visibleMessages} callbacks={callbacks} users={users} unreadByCompany={unreadByCompany} newProjectsByCompany={newProjectsByCompany} callbackByCompany={pendingCallbacksByCompany} companies={accessibleCompanies} onOpenProject={openProject} onNavigate={navigate} onApprove={approveProject} onSwitchCompany={switchCompany} />}
-          {activeView === "projects" && <ProjectsView projects={visibleProjects} users={users} currentUser={currentUser} searchTerm={searchTerm} onSearch={setSearchTerm} onOpenProject={openProject} onCreateProject={() => navigate("request")} />}
-          {activeView === "project" && selectedProject && <ProjectDetailView project={selectedProject} users={users} currentUser={currentUser} messages={messages.filter((message) => message.projectId === selectedProject.id)} documents={documents.filter((document) => document.projectId === selectedProject.id && (!document.financial || currentUser.type === "internal" || currentUser.rights.viewFinancials))} onBack={() => navigate("projects")} onApprove={() => approveProject(selectedProject.id)} onMessage={(text) => addProjectMessage(selectedProject.id, text)} onMarkRead={() => markThreadRead(`project:${selectedProject.id}`)} onDownload={(document) => downloadDocument(document, selectedProject)} onUpload={(file, meta) => uploadDocument(selectedProject.id, file, meta)} onUpdate={(draft) => updateProject(selectedProject.id, draft)} />}
-          {activeView === "messages" && <MessagesView messages={visibleMessages} projects={visibleProjects} users={users} company={currentCompany} currentUser={currentUser} initialTargetUserId={messageTargetUserId} onTargetUsed={() => setMessageTargetUserId(null)} onSendProject={addProjectMessage} onSendDirect={addDirectMessage} onMarkRead={markThreadRead} />}
-          {activeView === "documents" && <DocumentsView documents={visibleDocuments} projects={visibleProjects} currentUser={currentUser} onDownload={downloadDocument} onUpload={uploadDocument} />}
-          {activeView === "request" && <RequestView company={currentCompany} currentUser={currentUser} onCreate={createRequest} />}
-          {activeView === "team" && <TeamView company={currentCompany} users={users} currentUser={currentUser} onMessage={openDirectMessage} onCallback={(id) => setCallbackTargetUserId(id)} />}
+          {activeView === "dashboard" && currentCompany && <DashboardView currentUser={currentUser} company={currentCompany} projects={visibleProjects} messages={visibleMessages} callbacks={callbacks} users={users} unreadByCompany={unreadByCompany} newProjectsByCompany={newProjectsByCompany} callbackByCompany={pendingCallbacksByCompany} companies={accessibleCompanies} onOpenProject={openProject} onNavigate={navigate} onApprove={approveProject} onSwitchCompany={switchCompany} />}
+          {activeView === "projects" && currentCompany && <ProjectsView projects={visibleProjects} users={users} currentUser={currentUser} searchTerm={searchTerm} onSearch={setSearchTerm} onOpenProject={openProject} onCreateProject={() => navigate("request")} />}
+          {activeView === "project" && selectedProject && <ProjectDetailView project={selectedProject} users={users} currentUser={currentUser} messages={messages.filter((message) => message.projectId === selectedProject.id)} documents={documents.filter((document) => document.projectId === selectedProject.id && (!document.financial || currentUser.type === "internal" || currentUser.rights.viewFinancials))} onBack={() => navigate("projects")} onApprove={() => approveProject(selectedProject.id)} onMessage={(text) => addProjectMessage(selectedProject.id, text)} onMarkRead={() => markThreadRead(`project:${selectedProject.id}`)} onDownload={(document) => downloadDocument(document, selectedProject)} onUpload={(file, meta) => uploadDocument(selectedProject.id, file, meta)} onUpdate={(draft) => updateProject(selectedProject.id, draft)} onEditDetails={(draft) => editProjectDetails(selectedProject.id, draft)} />}
+          {activeView === "messages" && currentCompany && <MessagesView messages={visibleMessages} projects={visibleProjects} users={users} company={currentCompany} currentUser={currentUser} initialTargetUserId={messageTargetUserId} onTargetUsed={() => setMessageTargetUserId(null)} onSendProject={addProjectMessage} onSendDirect={addDirectMessage} onMarkRead={markThreadRead} />}
+          {activeView === "documents" && currentCompany && <DocumentsView documents={visibleDocuments} projects={visibleProjects} currentUser={currentUser} onDownload={downloadDocument} onUpload={uploadDocument} />}
+          {activeView === "request" && currentCompany && <RequestView company={currentCompany} currentUser={currentUser} onCreate={createRequest} />}
+          {activeView === "team" && currentCompany && <TeamView company={currentCompany} users={users} currentUser={currentUser} onMessage={openDirectMessage} onCallback={(id) => setCallbackTargetUserId(id)} />}
           {activeView === "callbacks" && currentUser.type === "internal" && <CallbacksView callbacks={callbacks.filter((entry) => entry.assignedUserId === currentUser.id)} users={users} companies={companies} onComplete={completeCallback} onOpenCompany={switchCompany} />}
-          {activeView === "settings" && canManageCompany && <CompanySettingsView company={currentCompany} users={users.filter((user) => user.type === "customer" && !user.deleted && user.companyId === currentCompany.id)} currentUser={currentUser} onUpdateCompany={updateCompany} onUpdateUser={updateUser} onInvite={inviteUser} onDeleteUser={deleteUser} />}
+          {activeView === "settings" && currentCompany && canManageCompany && <CompanySettingsView company={currentCompany} users={users.filter((user) => user.type === "customer" && !user.deleted && user.companyId === currentCompany.id)} currentUser={currentUser} onUpdateCompany={updateCompany} onUpdateUser={updateUser} onInvite={inviteUser} onDeleteUser={deleteUser} />}
+          {currentUser.type === "internal" && !currentCompany && activeView !== "companies" && activeView !== "callbacks" && <SelectCompanyPrompt onOpenCompanies={() => navigate("companies")} />}
         </main>
       </div>
       {callbackTargetUserId && <CallbackRequestModal target={getUser(users, callbackTargetUserId)} currentUser={currentUser} onClose={() => setCallbackTargetUserId(null)} onSubmit={(form) => requestCallback(callbackTargetUserId, form)} />}
@@ -764,17 +935,70 @@ function LoginScreen({ users, companies, onLogin }) {
   const [error, setError] = useState("");
   useEffect(() => { const first = users.find((user) => user.type === mode && !user.deleted); setEmail(first?.email || ""); setPassword("demo"); setError(""); }, [mode, users]);
   function submit(event) { event.preventDefault(); if (!onLogin(email, password, mode)) setError(`${mode === "customer" ? "Kundenkonto" : "Mitarbeiterkonto"} nicht gefunden oder Passwort falsch. Im Vorführmodus lautet das Passwort „demo“.`); }
-  return <main className="login-page"><section className="login-brand"><div className="login-logo"><Icon name="print" size={40} /><span><strong>druckkultur</strong><small>desk</small></span></div><p className="eyebrow">Ihre externe Druckabteilung</p><h1>Direkter Kontakt. Alle Printprojekte an einem Ort.</h1><p>Beratung, Nachrichten, Dateien, Freigaben, Rückrufe und Projektsteuerung in einem gemeinsamen Arbeitsraum.</p><div className="login-features"><span><Icon name="users" size={22} /> Persönliche Ansprechpartner</span><span><Icon name="fileCheck" size={22} /> Echte Dateiablage im Browser</span><span><Icon name="phone" size={22} /> Sichtbare Rückrufwünsche</span></div></section><section className="login-panel"><div className="login-card"><div className="login-tabs"><button className={mode === "customer" ? "active" : ""} onClick={() => { setMode("customer"); setError(""); }}>Kundenlogin</button><button className={mode === "internal" ? "active" : ""} onClick={() => { setMode("internal"); setError(""); }}>Mitarbeiterlogin</button></div><div className="login-heading"><span className="eyebrow">Vorführmodus</span><h2>{mode === "customer" ? "Als Kunde anmelden" : "Als druckkultur-Mitarbeiter anmelden"}</h2></div><form onSubmit={submit}><label className="form-field"><span>E-Mail-Adresse</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label><label className="form-field"><span>Passwort</span><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>{error && <p className="form-error">{error}</p>}<button className="primary-button wide-button" type="submit">Anmelden <Icon name="arrow" size={19} /></button></form><div className="demo-accounts"><strong>Zugang auswählen</strong><p>Passwort ist bei allen Konten <code>demo</code>.</p><div className="demo-account-list">{candidates.map((user) => { const company = getCompany(companies, user.companyId); return <button key={user.id} onClick={() => { setEmail(user.email); setPassword("demo"); }}><span className="avatar">{user.initials}</span><span><strong>{user.name}</strong><small>{company ? `${company.shortName} · ` : ""}{user.roleLabel}</small></span></button>; })}</div></div><p className="demo-note"><Icon name="shield" size={17} />Die Vorführung speichert Änderungen in diesem Browser. Für den echten Mehrbenutzerbetrieb werden Server-Login, Datenbank und geschützte Dateiablage ergänzt.</p></div></section></main>;
+  return <main className="login-page"><section className="login-brand"><div className="login-logo"><Icon name="print" size={40} /><span><strong>druckkultur</strong><small>desk</small></span></div><p className="eyebrow">Ihre externe Druckabteilung</p><h1>Direkter Kontakt. Alle Printprojekte an einem Ort.</h1><p>Beratung, Nachrichten, Dateien, Freigaben, Rückrufe und Projektsteuerung in einem gemeinsamen Arbeitsraum.</p><div className="login-features"><span><Icon name="users" size={22} /> Persönliche Ansprechpartner</span><span><Icon name="fileCheck" size={22} /> Zentrale Dokumentablage für alle Geräte</span><span><Icon name="phone" size={22} /> Sichtbare Rückrufwünsche</span></div></section><section className="login-panel"><div className="login-card"><div className="login-tabs"><button className={mode === "customer" ? "active" : ""} onClick={() => { setMode("customer"); setError(""); }}>Kundenlogin</button><button className={mode === "internal" ? "active" : ""} onClick={() => { setMode("internal"); setError(""); }}>Mitarbeiterlogin</button></div><div className="login-heading"><span className="eyebrow">Vorführmodus</span><h2>{mode === "customer" ? "Als Kunde anmelden" : "Als druckkultur-Mitarbeiter anmelden"}</h2></div><form onSubmit={submit}><label className="form-field"><span>E-Mail-Adresse</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label><label className="form-field"><span>Passwort</span><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>{error && <p className="form-error">{error}</p>}<button className="primary-button wide-button" type="submit">Anmelden <Icon name="arrow" size={19} /></button></form><div className="demo-accounts"><strong>Zugang auswählen</strong><p>Passwort ist bei allen Konten <code>demo</code>.</p><div className="demo-account-list">{candidates.map((user) => { const company = getCompany(companies, user.companyId); return <button key={user.id} onClick={() => { setEmail(user.email); setPassword("demo"); }}><span className="avatar">{user.initials}</span><span><strong>{user.name}</strong><small>{company ? `${company.shortName} · ` : ""}{user.roleLabel}</small></span></button>; })}</div></div><p className="demo-note"><Icon name="shield" size={17} />Firmen, Projekte, Nachrichten und Dokumente werden gemeinsam in Webflow Cloud gespeichert und auf mehreren Geräten automatisch synchronisiert.</p></div></section></main>;
 }
 
-function Sidebar({ navItems, activeView, currentUser, currentCompany, companies, unreadByCompany, newProjectsByCompany, callbackByCompany, mobileOpen, onNavigate, onSwitchCompany, onClose, onLogout, onReset, onAvailabilityChange }) {
+function Sidebar({ navItems, activeView, currentUser, currentCompany, companies, unreadByCompany, newProjectsByCompany, callbackByCompany, mobileOpen, onNavigate, onSwitchCompany, onClose, onLogout, onReset, onAvailabilityChange, syncStatus, lastSyncedAt }) {
   const availability = availabilityOptions[currentUser.availabilityStatus || "available"];
-  return <><button className={classNames("mobile-backdrop", mobileOpen && "visible")} onClick={onClose} aria-label="Menü schließen" /><aside className={classNames("sidebar", mobileOpen && "mobile-open")}><div className="brand-lockup"><span className="brand-mark"><Icon name="print" size={28} /></span><span><strong>druckkultur</strong><small>desk</small></span></div><div className="company-identity"><CompanyLogo company={currentCompany} /><div><span>{currentUser.type === "internal" ? "Aktive Firma" : "Ihr Unternehmen"}</span><strong>{currentCompany?.name}</strong></div></div>{currentUser.type === "internal" && <div className="company-switcher"><div className="sidebar-label"><span>Firmen wechseln</span></div><div className="company-switch-list">{companies.map((company) => <button key={company.id} className={company.id === currentCompany?.id ? "active" : ""} onClick={() => onSwitchCompany(company.id)}><CompanyLogo company={company} compact /><span><strong>{company.name}</strong><small>{company.customerNumber}</small></span><span className="company-alerts">{(newProjectsByCompany[company.id] || 0) > 0 && <b className="project-badge" title="Neue Projekte"><Icon name="projects" size={12} />{newProjectsByCompany[company.id]}</b>}{(unreadByCompany[company.id] || 0) > 0 && <b className="count-badge" title="Ungelesene Nachrichten">{unreadByCompany[company.id]}</b>}{(callbackByCompany[company.id] || 0) > 0 && <b className="phone-badge" title="Offene Rückrufe"><Icon name="phone" size={12} />{callbackByCompany[company.id]}</b>}</span></button>)}</div></div>}<nav className="main-nav">{navItems.map((item) => <button key={item.id} className={activeView === item.id ? "active" : ""} onClick={() => onNavigate(item.id)}><Icon name={item.icon} size={22} /><span>{item.label}</span>{item.id === "projects" && (newProjectsByCompany[currentCompany?.id] || 0) > 0 && <b className="project-badge"><Icon name="projects" size={12} />{newProjectsByCompany[currentCompany.id]}</b>}{item.id === "messages" && (unreadByCompany[currentCompany?.id] || 0) > 0 && <b className="count-badge">{unreadByCompany[currentCompany.id]}</b>}{item.id === "callbacks" && (callbackByCompany[currentCompany?.id] || 0) > 0 && <b className="phone-badge">{callbackByCompany[currentCompany.id]}</b>}</button>)}</nav><div className="sidebar-footer"><div className="signed-in-user"><span className="avatar">{currentUser.initials}</span><span><strong>{currentUser.name}</strong><small>{currentUser.roleLabel}</small></span></div>{currentUser.type === "internal" && <label className={classNames("availability-select", availability.tone)}><span><i />Eigener Status</span><select value={currentUser.availabilityStatus || "available"} onChange={(event) => onAvailabilityChange(event.target.value)}>{Object.entries(availabilityOptions).map(([value, option]) => <option value={value} key={value}>{option.label}</option>)}</select><small>{availability.description}</small></label>}<div className="sidebar-version">Version {APP_VERSION}</div><div className="sidebar-footer-actions"><button onClick={onLogout}>Abmelden</button><button onClick={onReset}>Vorführung zurücksetzen</button></div></div></aside></>;
+  const syncLabel = syncStatus === "saving" ? "Wird gespeichert …" : syncStatus === "error" ? "Verbindung unterbrochen" : syncStatus === "loading" ? "Daten werden geladen …" : "Gemeinsam gespeichert";
+  const syncTime = lastSyncedAt ? new Date(lastSyncedAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }) : "";
+  return <>
+    <button className={classNames("mobile-backdrop", mobileOpen && "visible")} onClick={onClose} aria-label="Menü schließen" />
+    <aside className={classNames("sidebar", mobileOpen && "mobile-open")}>
+      <div className="brand-lockup"><span className="brand-mark"><Icon name="print" size={28} /></span><span><strong>druckkultur</strong><small>desk</small></span></div>
+      <div className={classNames("company-identity", !currentCompany && "empty-company")}>
+        <CompanyLogo company={currentCompany} />
+        <div><span>{currentUser.type === "internal" ? "Aktive Firma" : "Ihr Unternehmen"}</span><strong>{currentCompany?.name || "Keine Firma ausgewählt"}</strong></div>
+      </div>
+      {currentUser.type === "internal" && <div className="company-switcher">
+        <div className="sidebar-label"><span>Firmen wechseln</span></div>
+        <div className="company-switch-list">{companies.map((company) => <button key={`${company.id}-${company.logoUpdatedAt || company.name}`} className={company.id === currentCompany?.id ? "active" : ""} onClick={() => onSwitchCompany(company.id)}>
+          <CompanyLogo company={company} compact />
+          <span><strong>{company.name}</strong><small>{company.customerNumber}</small></span>
+          <span className="company-alerts">{(newProjectsByCompany[company.id] || 0) > 0 && <b className="project-badge" title="Neue Projekte"><Icon name="projects" size={12} />{newProjectsByCompany[company.id]}</b>}{(unreadByCompany[company.id] || 0) > 0 && <b className="count-badge" title="Ungelesene Nachrichten">{unreadByCompany[company.id]}</b>}{(callbackByCompany[company.id] || 0) > 0 && <b className="phone-badge" title="Offene Rückrufe"><Icon name="phone" size={12} />{callbackByCompany[company.id]}</b>}</span>
+        </button>)}</div>
+      </div>}
+      <nav className="main-nav">{navItems.map((item) => <button key={item.id} className={activeView === item.id ? "active" : ""} onClick={() => onNavigate(item.id)}>
+        <Icon name={item.icon} size={22} /><span>{item.label}</span>
+        {item.id === "projects" && (newProjectsByCompany[currentCompany?.id] || 0) > 0 && <b className="project-badge"><Icon name="projects" size={12} />{newProjectsByCompany[currentCompany.id]}</b>}
+        {item.id === "messages" && (unreadByCompany[currentCompany?.id] || 0) > 0 && <b className="count-badge">{unreadByCompany[currentCompany.id]}</b>}
+        {item.id === "callbacks" && Object.values(callbackByCompany).reduce((sum, value) => sum + Number(value || 0), 0) > 0 && <b className="phone-badge">{Object.values(callbackByCompany).reduce((sum, value) => sum + Number(value || 0), 0)}</b>}
+      </button>)}</nav>
+      <div className="sidebar-footer">
+        <div className="signed-in-user"><span className="avatar">{currentUser.initials}</span><span><strong>{currentUser.name}</strong><small>{currentUser.roleLabel}</small></span></div>
+        {currentUser.type === "internal" && <label className={classNames("availability-select", availability.tone)}><span><i />Eigener Status</span><select value={currentUser.availabilityStatus || "available"} onChange={(event) => onAvailabilityChange(event.target.value)}>{Object.entries(availabilityOptions).map(([value, option]) => <option value={value} key={value}>{option.label}</option>)}</select><small>{availability.description}</small></label>}
+        <div className={classNames("sync-status", syncStatus)}><i /><span><strong>{syncLabel}</strong>{syncTime && <small>Stand {syncTime} Uhr</small>}</span></div>
+        <div className="sidebar-version">Version {APP_VERSION}</div>
+        <div className="sidebar-footer-actions"><button onClick={onLogout}>Abmelden</button>{currentUser.type === "internal" && currentUser.rights.manageCompanies && <button onClick={onReset}>Gemeinsame Demo zurücksetzen</button>}</div>
+      </div>
+    </aside>
+  </>;
 }
-function Topbar({ currentUser, currentCompany, searchTerm, unreadCount, callbackCount, onSearch, onMenu, onMessages, onCallbacks, onLogout }) {
-  return <header className="topbar"><button className="icon-button mobile-menu" onClick={onMenu}><Icon name="menu" /></button><div className="topbar-context"><span>{currentCompany?.shortName}</span><strong>{formatToday()}</strong></div><label className="global-search"><Icon name="search" size={21} /><input value={searchTerm} onChange={(event) => onSearch(event.target.value)} placeholder="Projekt, Auftrag oder Status suchen …" /></label><div className="topbar-actions">{currentUser.type === "internal" && <button className="notification-button callback-topbar" onClick={onCallbacks} aria-label={`${callbackCount} offene Rückrufe`}><Icon name="phone" size={22} />{callbackCount > 0 && <b>{callbackCount}</b>}</button>}<button className="notification-button" onClick={onMessages}><Icon name="bell" size={22} />{unreadCount > 0 && <b>{unreadCount}</b>}</button><div className="topbar-user"><span className="avatar">{currentUser.initials}</span><span><strong>{currentUser.firstName}</strong><small>{currentUser.type === "internal" ? "druckkultur" : currentUser.roleLabel}</small></span><button onClick={onLogout}><Icon name="external" size={17} /></button></div></div></header>;
+
+function Topbar({ currentUser, currentCompany, searchTerm, unreadCount, callbackCount, onSearch, onMenu, onMessages, onCallbacks, onLogout, syncStatus }) {
+  return <header className="topbar">
+    <button className="icon-button mobile-menu" onClick={onMenu}><Icon name="menu" /></button>
+    <div className="topbar-context"><span>{currentCompany?.shortName || "Firmenübersicht"}</span><strong>{formatToday()}</strong></div>
+    <label className={classNames("global-search", !currentCompany && "disabled")}><Icon name="search" size={21} /><input disabled={!currentCompany} value={searchTerm} onChange={(event) => onSearch(event.target.value)} placeholder={currentCompany ? "Projekt, Auftrag oder Status suchen …" : "Zuerst eine Firma auswählen"} /></label>
+    <div className="topbar-actions">
+      <span className={classNames("topbar-sync", syncStatus)}>{syncStatus === "saving" ? "Speichert …" : syncStatus === "error" ? "Offline" : "Live"}</span>
+      {currentUser.type === "internal" && <button className="notification-button callback-topbar" onClick={onCallbacks} aria-label={`${callbackCount} offene Rückrufe`}><Icon name="phone" size={22} />{callbackCount > 0 && <b>{callbackCount}</b>}</button>}
+      <button className="notification-button" disabled={!currentCompany} onClick={onMessages}><Icon name="bell" size={22} />{unreadCount > 0 && <b>{unreadCount}</b>}</button>
+      <div className="topbar-user"><span className="avatar">{currentUser.initials}</span><span><strong>{currentUser.firstName}</strong><small>{currentUser.type === "internal" ? "druckkultur" : currentUser.roleLabel}</small></span><button onClick={onLogout}><Icon name="external" size={17} /></button></div>
+    </div>
+  </header>;
 }
-function CompanyLogo({ company, compact = false }) { return company?.logoData ? <span className={classNames("company-logo", compact && "compact")}><img key={company.logoUpdatedAt || company.logoData.length} src={company.logoData} alt={`${company.name} Logo`} /></span> : <span className={classNames("company-logo", compact && "compact")}>{company?.initials || "DK"}</span>; }
+
+function CompanyLogo({ company, compact = false }) {
+  const revision = company?.logoUpdatedAt || company?.logoData?.length || company?.initials || "none";
+  return company?.logoData
+    ? <span key={`${company.id}-${revision}`} className={classNames("company-logo", compact && "compact")}><img src={company.logoData} alt={`${company.name} Logo`} /></span>
+    : <span key={`${company?.id || "none"}-${revision}`} className={classNames("company-logo", compact && "compact")}>{company?.initials || "DK"}</span>;
+}
+
+function SelectCompanyPrompt({ onOpenCompanies }) {
+  return <section className="select-company-prompt panel"><span className="brand-mark"><Icon name="layers" size={30} /></span><h1>Welche Firma möchten Sie öffnen?</h1><p>Nach der Anmeldung ist bewusst noch kein Kundenarbeitsraum aktiv. Wählen Sie eine Firma aus der linken Seitenleiste oder aus der Firmenübersicht.</p><button className="primary-button" onClick={onOpenCompanies}>Firmenübersicht öffnen</button></section>;
+}
 
 function CompaniesView({ companies, projects, unreadByCompany, newProjectsByCompany, callbackByCompany, users, onOpen }) {
   return <div className="page-stack"><PageHeader eyebrow="Mandantenübersicht" title="Alle betreuten Firmen" lead="Neue Nachrichten, Rückrufwünsche und offene Entscheidungen bleiben sichtbar, auch wenn Sie gerade in einer anderen Firma arbeiten." /><section className="company-grid">{companies.map((company) => { const companyProjects = projects.filter((project) => project.companyId === company.id); const open = companyProjects.filter((project) => project.progress < 100).length; const attention = companyProjects.filter((project) => project.statusTone === "warning").length; const customerUsers = users.filter((user) => user.type === "customer" && !user.deleted && user.companyId === company.id).length; return <button className="company-card" key={company.id} onClick={() => onOpen(company.id)}><div className="company-card-head"><CompanyLogo company={company} /><div><span>{company.customerNumber}</span><h2>{company.name}</h2><p>{company.industry}</p></div><div className="company-card-alerts">{newProjectsByCompany[company.id] > 0 && <b className="project-new-pill"><Icon name="projects" size={14} /> {newProjectsByCompany[company.id]} neue Projekte</b>}{unreadByCompany[company.id] > 0 && <b className="new-pill">{unreadByCompany[company.id]} Nachrichten</b>}{callbackByCompany[company.id] > 0 && <b className="callback-pill"><Icon name="phone" size={14} /> {callbackByCompany[company.id]} Rückruf</b>}</div></div><div className="company-metrics"><div><strong>{open}</strong><span>laufende Projekte</span></div><div><strong>{attention}</strong><span>offene Entscheidungen</span></div><div><strong>{customerUsers}</strong><span>Kundenzugänge</span></div></div><span className="company-open">Arbeitsraum öffnen <Icon name="arrow" size={18} /></span></button>; })}</section></div>;
@@ -857,7 +1081,7 @@ function ProjectsView({ projects, users, currentUser, searchTerm, onSearch, onOp
   );
 }
 
-function ProjectDetailView({ project, users, currentUser, messages, documents, onBack, onApprove, onMessage, onMarkRead, onDownload, onUpload, onUpdate }) {
+function ProjectDetailView({ project, users, currentUser, messages, documents, onBack, onApprove, onMessage, onMarkRead, onDownload, onUpload, onUpdate, onEditDetails }) {
   const [tab, setTab] = useState("overview");
   const [draftMessage, setDraftMessage] = useState("");
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -960,8 +1184,11 @@ function ProjectDetailView({ project, users, currentUser, messages, documents, o
             </section>
           </div>
           <aside className="detail-side">
+            {canEditProject(currentUser, project) && <ProjectDataEditor project={project} currentUser={currentUser} onSave={onEditDetails} />}
             {currentUser.type === "internal" ? (
-              <ProjectControlPanel project={project} users={users} onSave={onUpdate} />
+              currentUser.rights?.editProjects
+                ? <ProjectControlPanel project={project} users={users} onSave={onUpdate} />
+                : <section className="panel permission-note"><Icon name="shield" size={24} /><h2>Nur Ansicht</h2><p>Ihr Mitarbeiterkonto darf Projekte einsehen, aber Status und Projektverlauf nicht verändern.</p></section>
             ) : (
               <section className="panel contact-compact">
                 <span className="eyebrow">Persönlicher Ansprechpartner</span>
@@ -1012,6 +1239,29 @@ function ProjectDetailView({ project, users, currentUser, messages, documents, o
       )}
     </div>
   );
+}
+
+function ProjectDataEditor({ project, currentUser, onSave }) {
+  const fields = ["title", "category", "quantity", "delivery", "format", "material", "customerOrderNumber", "reference", "specification", "specialInstructions"];
+  const makeDraft = () => Object.fromEntries(fields.map((key) => [key, project[key] || ""]));
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(makeDraft);
+  useEffect(() => setDraft(makeDraft()), [project]);
+  function update(key, value) { setDraft((current) => ({ ...current, [key]: value })); }
+  function save() { if (onSave(draft) !== false) setOpen(false); }
+  return <section className="panel project-data-editor">
+    <button type="button" className="project-editor-toggle" onClick={() => setOpen((value) => !value)}><span><Icon name="edit" size={20} /><span><strong>Projektdaten bearbeiten</strong><small>{currentUser.type === "customer" ? "Änderungen werden dem Projektteam gemeldet" : "Änderungen werden für Kunde und Team protokolliert"}</small></span></span><Icon name="arrow" size={18} /></button>
+    {open && <div className="project-editor-form">
+      <div className="control-two"><label className="form-field"><span>Projektname</span><input value={draft.title} onChange={(event) => update("title", event.target.value)} /></label><label className="form-field"><span>Produktart</span><input value={draft.category} onChange={(event) => update("category", event.target.value)} /></label></div>
+      <div className="control-two"><label className="form-field"><span>Auflage</span><input value={draft.quantity} onChange={(event) => update("quantity", event.target.value)} /></label><label className="form-field"><span>Liefertermin</span><input value={draft.delivery} onChange={(event) => update("delivery", event.target.value)} /></label></div>
+      <div className="control-two"><label className="form-field"><span>Format</span><input value={draft.format} onChange={(event) => update("format", event.target.value)} /></label><label className="form-field"><span>Material</span><input value={draft.material} onChange={(event) => update("material", event.target.value)} /></label></div>
+      <div className="control-two"><label className="form-field"><span>Bestellnummer</span><input value={draft.customerOrderNumber} onChange={(event) => update("customerOrderNumber", event.target.value)} /></label><label className="form-field"><span>Referenz</span><input value={draft.reference} onChange={(event) => update("reference", event.target.value)} /></label></div>
+      <label className="form-field"><span>Ausführung / Spezifikation</span><textarea rows="4" value={draft.specification} onChange={(event) => update("specification", event.target.value)} /></label>
+      <label className="form-field"><span>Besondere Hinweise</span><textarea rows="3" value={draft.specialInstructions} onChange={(event) => update("specialInstructions", event.target.value)} /></label>
+      <p className="edit-audit-hint"><Icon name="shield" size={17} /> Beim Speichern werden Benutzer, Zeitpunkt und jede Feldänderung im Statusprotokoll dokumentiert. Außerdem entsteht automatisch eine neue Projektnachricht.</p>
+      <div className="project-editor-actions"><button className="ghost-button" type="button" onClick={() => { setDraft(makeDraft()); setOpen(false); }}>Abbrechen</button><button className="primary-button" type="button" onClick={save}>Änderungen speichern</button></div>
+    </div>}
+  </section>;
 }
 
 function ProjectControlPanel({ project, users, onSave }) {
@@ -1769,7 +2019,7 @@ function TeamView({ company, users, currentUser, onMessage, onCallback }) {
   const internalTeam = company.assignedTeam.map((id) => getUser(users, id)).filter(Boolean);
   const customerTeam = users.filter((user) => user.type === "customer" && !user.deleted && user.companyId === company.id);
   const people = currentUser.type === "customer" ? internalTeam : customerTeam;
-  return <div className="page-stack"><PageHeader eyebrow="Klare Zuständigkeiten" title={currentUser.type === "customer" ? "Ihre Ansprechpartner" : `Kontakte bei ${company.shortName}`} lead="Nachrichten öffnen eine echte direkte Unterhaltung. Rückrufwünsche erscheinen beim zuständigen Mitarbeiter sofort und bleiben in seiner Rückrufzentrale sichtbar." /><section className="team-grid expanded-team">{people.map((person) => <article className="team-card" key={person.id}><div className="team-card-header"><div className="avatar xlarge">{person.initials}</div><span className={classNames("availability-label", person.type === "internal" ? (availabilityOptions[person.availabilityStatus || "available"]?.tone || "offline") : "contact")}><i />{person.type === "internal" ? (availabilityOptions[person.availabilityStatus || "available"]?.label || "Offline") : "Kundenkontakt"}</span></div><span className="team-role">{person.roleLabel}</span><h2>{person.name}</h2><p>{person.email}<br />{person.phone}</p><div className="team-actions"><button className="primary-button compact" onClick={() => onMessage(person.id)}><Icon name="message" size={18} /> Nachricht</button>{currentUser.type === "customer" ? <button className="secondary-button compact" onClick={() => onCallback(person.id)}><Icon name="phone" size={18} /> Rückruf wünschen</button> : <a className="secondary-button compact" href={telHref(person.phone)}><Icon name="phone" size={18} /> Direkt anrufen</a>}</div></article>)}</section>{currentUser.type === "internal" && <section className="panel contact-rights"><PanelHeader title="Kundenzugänge" subtitle="Sicht und Freigaberechte je Mitarbeiter" /><div className="people-list">{customerTeam.map((person) => <article key={person.id}><span className="avatar">{person.initials}</span><div><strong>{person.name}</strong><span>{person.roleLabel} · {person.phone}</span></div><div className="rights-summary"><span>{person.rights.viewAllProjects ? "Alle Projekte" : "Nur zugewiesene Projekte"}</span><span>{person.rights.approve ? "Freigabe erlaubt" : "Keine Freigabe"}</span></div></article>)}</div></section>}</div>;
+  return <div className="page-stack"><PageHeader eyebrow="Klare Zuständigkeiten" title={currentUser.type === "customer" ? "Ihre Ansprechpartner" : `Kontakte bei ${company.shortName}`} lead="Nachrichten öffnen eine echte direkte Unterhaltung. Rückrufwünsche erscheinen beim zuständigen Mitarbeiter sofort und bleiben in seiner Rückrufzentrale sichtbar." /><section className="team-grid expanded-team">{people.map((person) => <article className="team-card" key={person.id}><div className="team-card-header"><div className="avatar xlarge">{person.initials}</div><span className={classNames("availability-label", person.type === "internal" ? (availabilityOptions[person.availabilityStatus || "available"]?.tone || "offline") : "contact")}><i />{person.type === "internal" ? (availabilityOptions[person.availabilityStatus || "available"]?.label || "Offline") : "Kundenkontakt"}</span></div><span className="team-role">{person.roleLabel}</span><h2>{person.name}</h2><p>{person.email}<br />{person.phone}</p><div className="team-actions"><button className="primary-button compact" onClick={() => onMessage(person.id)}><Icon name="message" size={18} /> Nachricht</button>{currentUser.type === "customer" ? <button className="secondary-button compact" onClick={() => onCallback(person.id)}><Icon name="phone" size={18} /> Rückruf wünschen</button> : <a className="secondary-button compact" href={telHref(person.phone)}><Icon name="phone" size={18} /> Direkt anrufen</a>}</div></article>)}</section>{currentUser.type === "internal" && <section className="panel contact-rights"><PanelHeader title="Kundenzugänge" subtitle="Sicht und Freigaberechte je Mitarbeiter" /><div className="people-list">{customerTeam.map((person) => <article key={person.id}><span className="avatar">{person.initials}</span><div><strong>{person.name}</strong><span>{person.roleLabel} · {person.phone}</span></div><div className="rights-summary"><span>{person.rights.viewAllProjects ? "Alle Projekte" : "Nur zugewiesene Projekte"}</span><span>{person.rights.editProjects ? "Bearbeitung erlaubt" : "Nur Ansicht"}</span><span>{person.rights.approve ? "Freigabe erlaubt" : "Keine Freigabe"}</span></div></article>)}</div></section>}</div>;
 }
 
 
@@ -1904,6 +2154,7 @@ function CompanySettingsView({ company, users, currentUser, onUpdateCompany, onU
   const canManageUsers = currentUser.type === "internal" ? Boolean(currentUser.rights.manageCompanies) : Boolean(currentUser.rights.manageUsers);
   const rights = [
     ["viewAllProjects", "Alle Firmenprojekte sehen"],
+    ["editProjects", "Projektdaten bearbeiten"],
     ["approve", "Druckdaten freigeben"],
     ["viewFinancials", "Angebote und Rechnungen sehen"],
     ["createRequests", "Neue Projekte anfragen"],

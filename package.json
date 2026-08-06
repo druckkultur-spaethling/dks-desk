@@ -1,6 +1,6 @@
 {
   "name": "druckkultur-portal",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "private": true,
   "engines": {
     "node": ">=22"
@@ -9,7 +9,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview"
+    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "cf-typegen": "wrangler types"
   },
   "dependencies": {
     "next": "^15.5.0",
