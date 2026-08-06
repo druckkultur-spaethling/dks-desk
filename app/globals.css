@@ -931,3 +931,28 @@ body { font-size: 17px; }
   .new-message-actions button { width: 100%; }
   .user-contact-row { grid-template-columns: 1fr; }
 }
+
+
+/* Version 2.1: manuell abschließbarer Projektverlauf */
+.workflow-editor { display: grid; gap: 13px; padding: 16px; border: 1px solid var(--border); border-radius: 14px; background: rgba(255,255,255,.018); }
+.workflow-editor-heading { display: flex; align-items: center; justify-content: space-between; gap: 15px; }
+.workflow-editor-heading > div { display: grid; }
+.workflow-editor-heading strong { font-size: 1rem; }
+.workflow-editor-heading span { color: var(--muted); font-size: .82rem; }
+.workflow-editor-heading > b { padding: 6px 9px; border-radius: 999px; background: color-mix(in srgb, var(--brand) 18%, transparent); color: var(--brand-soft); font-size: .76rem; }
+.workflow-editor-list { display: grid; gap: 7px; }
+.workflow-editor-list article { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 11px; min-height: 60px; padding: 9px 10px; border: 1px solid var(--border); border-radius: 11px; background: var(--surface); }
+.workflow-editor-list article.current { border-color: color-mix(in srgb, var(--brand-soft) 38%, var(--border)); }
+.workflow-editor-list article.completed { background: color-mix(in srgb, var(--success) 6%, var(--surface)); }
+.workflow-check { display: grid; place-items: center; width: 31px; height: 31px; border: 1px solid var(--border-strong); border-radius: 50%; color: var(--muted); font-size: .78rem; font-weight: 800; }
+.workflow-editor-list article.completed .workflow-check { border-color: var(--success); background: var(--success); color: #062019; }
+.workflow-editor-list article > div { display: grid; }
+.workflow-editor-list article strong { font-size: .92rem; }
+.workflow-editor-list article small { color: var(--muted); font-size: .76rem; }
+.workflow-editor-list .compact { min-height: 35px; padding-inline: 10px; font-size: .73rem; }
+@media (max-width: 620px) {
+  .workflow-editor-list article { grid-template-columns: auto minmax(0, 1fr); }
+  .workflow-editor-list article > button { grid-column: 1 / -1; width: 100%; justify-content: center; }
+}
+
+.preserve-lines { white-space: pre-line; }

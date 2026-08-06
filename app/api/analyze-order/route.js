@@ -14,13 +14,28 @@ function demoResult(fileName, company) {
   const base = fileName.replace(/\.pdf$/i, "").replace(/[_-]+/g, " ").trim();
   return {
     kind: /falt|verpack|karton/i.test(base) ? "Faltschachtel / Verpackung" : "Printprodukt",
-    title: base && !/^bestellung$/i.test(base) ? base : "Faltschachtel Vitamin-Komplex",
-    description: `Bestellung von ${company || "Kundenseite"}. Bitte Ausführung, Lieferadresse und Druckdaten persönlich prüfen.`,
-    quantity: "25.000 Stück",
+    title: base && !/^bestellung$/i.test(base) ? base : "Beispielprodukt aus Kundenbestellung",
+    description: `Bestellung von ${company || "Kundenseite"}. Ausführung, Lieferadresse und Druckdaten müssen persönlich geprüft werden.`,
+    quantity: "5.000 Stück",
     deadline: "2026-09-15",
-    customerOrderNumber: "PO-2026-1845",
-    format: "59 × 59 × 110 mm",
-    material: "GC1 350 g/m²"
+    customerOrderNumber: "PO-DEMO-2026-1845",
+    orderDate: "06.08.2026",
+    buyerName: "Erika Beispiel",
+    buyerEmail: "einkauf@beispielkunde.de",
+    buyerPhone: "+49 000 000000",
+    supplierNumber: "L-DEMO-01",
+    offerNumber: "A-DEMO-2026",
+    reference: "PROJEKT-DEMO",
+    customerArticleNumber: "ART-DEMO-100",
+    supplierArticleNumber: "DK-DEMO-100",
+    unitPrice: "0,42 € / Stück",
+    totalPrice: "2.100,00 €",
+    deliveryAddress: `Beispielkunde GmbH\nMusterstraße 1\n12345 Musterstadt`,
+    deliveryTerms: "frei Haus",
+    paymentTerms: "30 Tage netto",
+    specialInstructions: "Vor Serienproduktion Muster und Kennzeichnungsvorgaben prüfen.",
+    format: "210 × 297 mm",
+    material: "nach persönlicher Abstimmung"
   };
 }
 
@@ -65,10 +80,25 @@ export async function POST(request) {
         quantity: { type: "string" },
         deadline: { type: "string", description: "YYYY-MM-DD oder leer" },
         customerOrderNumber: { type: "string" },
+        orderDate: { type: "string" },
+        buyerName: { type: "string" },
+        buyerEmail: { type: "string" },
+        buyerPhone: { type: "string" },
+        supplierNumber: { type: "string" },
+        offerNumber: { type: "string" },
+        reference: { type: "string" },
+        customerArticleNumber: { type: "string" },
+        supplierArticleNumber: { type: "string" },
+        unitPrice: { type: "string" },
+        totalPrice: { type: "string" },
+        deliveryAddress: { type: "string" },
+        deliveryTerms: { type: "string" },
+        paymentTerms: { type: "string" },
+        specialInstructions: { type: "string" },
         format: { type: "string" },
         material: { type: "string" }
       },
-      required: ["kind", "title", "description", "quantity", "deadline", "customerOrderNumber", "format", "material"]
+      required: ["kind", "title", "description", "quantity", "deadline", "customerOrderNumber", "orderDate", "buyerName", "buyerEmail", "buyerPhone", "supplierNumber", "offerNumber", "reference", "customerArticleNumber", "supplierArticleNumber", "unitPrice", "totalPrice", "deliveryAddress", "deliveryTerms", "paymentTerms", "specialInstructions", "format", "material"]
     };
 
     const aiResponse = await fetch("https://api.openai.com/v1/responses", {
@@ -90,7 +120,7 @@ export async function POST(request) {
             },
             {
               type: "input_text",
-              text: `Lies diese Kundenbestellung für eine Druckerei aus. Extrahiere ausschließlich belegte Angaben. Leere oder nicht eindeutige Felder als leere Zeichenkette ausgeben. Ordne kind möglichst einer dieser Kategorien zu: Printprodukt, Mailing, Faltschachtel / Verpackung, Veredelung, Sonderproduktion, Noch nicht sicher. Kunde: ${company}. Formuliere description als knappe Zusammenfassung der bestellten Druckleistung und besonderer Anforderungen.`
+              text: `Lies diese B2B-Kundenbestellung für eine Druckerei aus. Extrahiere ausschließlich eindeutig belegte Angaben; fehlende oder mehrdeutige Werte bleiben leer. Berücksichtige Kopfbereich, Ansprechpartner im Einkauf, Bestell- und Angebotsnummern, Referenzen, Artikelnummern beider Seiten, Bezeichnung, Menge und Einheit, Preisangaben, Liefertermin, abweichende Lieferadresse, Liefer- und Zahlungsbedingungen sowie deutlich hervorgehobene Muster-, Kennzeichnungs- oder Anliefervorgaben. Ordne kind möglichst einer dieser Kategorien zu: Printprodukt, Mailing, Faltschachtel / Verpackung, Veredelung, Sonderproduktion, Noch nicht sicher. Kunde: ${company}. Verwende title für die konkrete Produktbezeichnung. Formuliere description als knappe Zusammenfassung der Druckleistung; specialInstructions enthält alle besonderen Vorgaben möglichst vollständig.`
             }
           ]
         }],

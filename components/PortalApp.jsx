@@ -11,7 +11,7 @@ import {
   initialUsers
 } from "@/data/mock-data";
 
-const STORAGE_KEY = "druckkultur-desk-demo-v4";
+const STORAGE_KEY = "druckkultur-desk-demo-v2.1";
 const FILE_DB = "druckkultur-desk-files";
 const FILE_STORE = "uploads";
 
@@ -26,27 +26,17 @@ const baseNav = [
 
 const statusPresets = {
   "Anfrage eingegangen": { progress: 8, tone: "info", next: "Persönliche Prüfung durch druckkultur", detail: "Die Anfrage wird geprüft und einem Ansprechpartner zugeordnet." },
-  "Anfrage wird geprüft": { progress: 12, tone: "info", next: "Machbarkeit und Unterlagen prüfen", detail: "Das Projektteam prüft die Anfrage, vorhandene Dateien und offene Angaben." },
   "In Beratung": { progress: 16, tone: "info", next: "Anforderungen gemeinsam klären", detail: "Material, Ausführung, Termin und wirtschaftliche Umsetzung werden abgestimmt." },
-  "Angebot in Erstellung": { progress: 21, tone: "info", next: "Angebot wird ausgearbeitet", detail: "Kalkulation, Material und Produktionsweg werden aktuell zusammengestellt." },
   "Angebot liegt vor": { progress: 25, tone: "info", next: "Angebot prüfen und rückmelden", detail: "Das Angebot liegt im Dokumentenbereich bereit." },
-  "Auftrag bestätigt": { progress: 29, tone: "success", next: "Unterlagen und Produktionsplanung vorbereiten", detail: "Der Auftrag wurde bestätigt und wird für die weitere Bearbeitung vorbereitet." },
   "Druckdaten fehlen": { progress: 30, tone: "warning", next: "Druckdaten oder offene Inhalte bereitstellen", detail: "Für die weitere Bearbeitung fehlen noch Daten oder verbindliche Inhalte." },
   "Druckdaten werden geprüft": { progress: 38, tone: "info", next: "Prüfbericht abwarten", detail: "Format, Beschnitt, Schriften, Bilder und technische Anforderungen werden geprüft." },
-  "Korrekturdaten erforderlich": { progress: 40, tone: "warning", next: "Korrigierte Daten bereitstellen", detail: "Die Datenprüfung hat Punkte ergeben, die vor der Freigabe angepasst werden müssen." },
   "Rückfrage offen": { progress: 36, tone: "warning", next: "Offene Rückfrage beantworten", detail: "Für die weitere Bearbeitung benötigt das Projektteam eine kurze Entscheidung oder Ergänzung." },
-  "Material bestellt": { progress: 43, tone: "info", next: "Materialeingang abwarten", detail: "Das benötigte Material wurde bestellt oder für das Projekt reserviert." },
   "Muster wird erstellt": { progress: 45, tone: "info", next: "Musterprüfung abwarten", detail: "Ein Weißmuster oder Produktionsmuster wird vorbereitet und anschließend gemeinsam geprüft." },
-  "Freigabedaten in Erstellung": { progress: 47, tone: "info", next: "Freigabedaten werden vorbereitet", detail: "Die verbindliche Freigabeversion wird aktuell erstellt." },
   "Freigabe erforderlich": { progress: 48, tone: "warning", next: "Aktuelle Version verbindlich freigeben", detail: "Bitte Inhalt, Ausführung und gekennzeichnete Änderungen kontrollieren." },
   "Für Produktion freigegeben": { progress: 60, tone: "success", next: "Keine Aktion erforderlich", detail: "Die Freigabe ist protokolliert. Das Projekt wird für die Produktion vorbereitet." },
-  "Druckplatten erstellt": { progress: 66, tone: "success", next: "Druck wird vorbereitet", detail: "Die Druckplatten sind erstellt und der Auftrag ist für die Maschine vorbereitet." },
-  "Im Druck": { progress: 74, tone: "success", next: "Keine Aktion erforderlich", detail: "Das Projekt wird aktuell gedruckt." },
   "In Produktion": { progress: 74, tone: "success", next: "Keine Aktion erforderlich", detail: "Das Projekt befindet sich in der Produktion." },
   "Weiterverarbeitung": { progress: 86, tone: "success", next: "Keine Aktion erforderlich", detail: "Falzen, Stanzen, Kleben, Veredeln oder Konfektionieren läuft." },
-  "Qualitätskontrolle": { progress: 91, tone: "success", next: "Endkontrolle abschließen", detail: "Menge, Ausführung und Verpackung werden abschließend kontrolliert." },
   "Versandbereit": { progress: 95, tone: "success", next: "Lieferung erfolgt", detail: "Die Ware ist fertiggestellt und für Versand oder Abholung vorbereitet." },
-  "Teilversand erfolgt": { progress: 96, tone: "success", next: "Restmenge fertigstellen oder zustellen", detail: "Ein Teil der Ware wurde bereits ausgeliefert." },
   "Geliefert": { progress: 100, tone: "success", next: "Projekt abgeschlossen", detail: "Die Lieferung wurde abgeschlossen. Dokumente bleiben im Projektarchiv verfügbar." },
   "Abgeschlossen": { progress: 100, tone: "success", next: "Projekt abgeschlossen", detail: "Das Projekt ist abgeschlossen und bleibt mit allen Entscheidungen und Dokumenten archiviert." },
   "Zurückgestellt": { progress: 12, tone: "neutral", next: "Weitere Entscheidung abwarten", detail: "Das Projekt ist vorübergehend pausiert." }
@@ -63,6 +53,21 @@ const emptyRequest = {
   quantity: "",
   deadline: "",
   customerOrderNumber: "",
+  orderDate: "",
+  buyerName: "",
+  buyerEmail: "",
+  buyerPhone: "",
+  supplierNumber: "",
+  offerNumber: "",
+  reference: "",
+  customerArticleNumber: "",
+  supplierArticleNumber: "",
+  unitPrice: "",
+  totalPrice: "",
+  deliveryAddress: "",
+  deliveryTerms: "",
+  paymentTerms: "",
+  specialInstructions: "",
   format: "",
   material: "",
   documentType: "Anfrage"
@@ -95,12 +100,43 @@ function receiptText(message, users, currentUser) {
 function buildSteps(status) {
   const stages = ["Anfrage", "Beratung", "Angebot", "Druckdaten", "Freigabe", "Produktion", "Weiterverarbeitung", "Lieferung"];
   const currentByStatus = {
-    "Anfrage eingegangen": 0, "In Beratung": 1, "Angebot liegt vor": 2, "Druckdaten fehlen": 3,
-    "Druckdaten werden geprüft": 3, "Rückfrage offen": 3, "Muster wird erstellt": 4, "Freigabe erforderlich": 4, "Für Produktion freigegeben": 5,
-    "In Produktion": 5, "Weiterverarbeitung": 6, "Versandbereit": 7, "Geliefert": 8, "Abgeschlossen": 8, "Zurückgestellt": 1
+    "Anfrage eingegangen": 0,
+    "In Beratung": 1,
+    "Angebot liegt vor": 2,
+    "Druckdaten fehlen": 3,
+    "Druckdaten werden geprüft": 3,
+    "Rückfrage offen": 3,
+    "Muster wird erstellt": 4,
+    "Freigabe erforderlich": 4,
+    "Für Produktion freigegeben": 5,
+    "In Produktion": 5,
+    "Weiterverarbeitung": 6,
+    "Versandbereit": 7,
+    "Geliefert": 8,
+    "Abgeschlossen": 8,
+    "Zurückgestellt": 1
   };
   const current = currentByStatus[status] ?? 0;
-  return stages.map((label, index) => ({ label, state: index < current ? "done" : index === current && current < stages.length ? "current" : "upcoming", date: index < current ? "erledigt" : index === current ? "aktuell" : "offen" }));
+  return stages.map((label, index) => ({
+    label,
+    state: index < current ? "done" : index === current && current < stages.length ? "current" : "upcoming",
+    date: index < current ? "erledigt" : index === current ? "aktuell" : "offen",
+    completed: index < current,
+    completedAt: index < current ? "erledigt" : ""
+  }));
+}
+
+function normalizeWorkflowSteps(steps = []) {
+  let currentAssigned = false;
+  return steps.map((step) => {
+    const completed = Boolean(step.completed || step.state === "done");
+    if (completed) return { ...step, completed: true, state: "done", completedAt: step.completedAt || step.date || "erledigt", date: step.completedAt || step.date || "erledigt" };
+    if (!currentAssigned) {
+      currentAssigned = true;
+      return { ...step, completed: false, completedAt: "", state: "current", date: "aktuell" };
+    }
+    return { ...step, completed: false, completedAt: "", state: "upcoming", date: "offen" };
+  });
 }
 
 function openFileDb() {
@@ -283,43 +319,61 @@ export default function PortalApp() {
   function approveProject(projectId) {
     if (!currentUser?.rights.approve) return setNotice("Für Freigaben fehlt diesem Benutzer die Berechtigung.");
     const preset = statusPresets["Für Produktion freigegeben"];
-    setProjects((current) => current.map((project) => project.id === projectId ? { ...project, status: "Für Produktion freigegeben", statusTone: preset.tone, progress: preset.progress, nextAction: preset.next, nextActionDetail: `Freigegeben durch ${currentUser.name}. ${preset.detail}`, due: "–", updated: "gerade eben", steps: buildSteps("Für Produktion freigegeben") } : project));
+    setProjects((current) => current.map((project) => {
+      if (project.id !== projectId) return project;
+      const steps = normalizeWorkflowSteps((project.steps?.length ? project.steps : buildSteps(project.status)).map((step) => step.label === "Freigabe" ? { ...step, completed: true, completedAt: formatDate(), state: "done", date: formatDate() } : step));
+      return { ...project, status: "Für Produktion freigegeben", statusTone: preset.tone, progress: preset.progress, nextAction: preset.next, nextActionDetail: `Freigegeben durch ${currentUser.name}. ${preset.detail}`, due: "–", updated: "gerade eben", steps };
+    }));
     addProjectMessage(projectId, `Die aktuelle Version wurde von ${currentUser.name} verbindlich für die Produktion freigegeben.`);
     setNotice("Freigabe gespeichert und protokolliert.");
   }
 
   function updateProject(projectId, draft) {
-      if (currentUser?.type !== "internal") return;
-      const original = projects.find((project) => project.id === projectId);
-      const preset = statusPresets[draft.status] || {};
-      const statusChanged = original && draft.status !== original.status;
-      const historyEntry = statusChanged ? {
-        id: `status-${Date.now()}`,
-        status: draft.status,
-        note: draft.statusNote || draft.nextActionDetail || "",
+    if (currentUser?.type !== "internal") return;
+    const original = projects.find((project) => project.id === projectId);
+    if (!original) return;
+    const preset = statusPresets[draft.status] || statusPresets[original.status] || {};
+    const statusChanged = draft.status !== original.status;
+    const oldSteps = normalizeWorkflowSteps(original.steps?.length ? original.steps : buildSteps(original.status));
+    const newSteps = normalizeWorkflowSteps(draft.steps?.length ? draft.steps : oldSteps);
+    const workflowChanges = newSteps.flatMap((step, index) => {
+      const before = oldSteps[index];
+      if (!before || Boolean(before.completed) === Boolean(step.completed)) return [];
+      return [{
+        id: `workflow-${Date.now()}-${index}`,
+        status: `${step.label}: ${step.completed ? "erledigt" : "wieder geöffnet"}`,
+        note: draft.statusNote || (step.completed ? "Arbeitsschritt wurde als erledigt markiert." : "Erledigt-Markierung wurde zurückgenommen."),
         byUserId: currentUser.id,
         at: formatDateTime()
-      } : null;
-      setProjects((current) => current.map((project) => project.id === projectId ? {
-        ...project,
-        status: draft.status,
-        statusTone: preset.tone || draft.statusTone || project.statusTone || "info",
-        progress: Number(draft.progress),
-        nextAction: draft.nextAction,
-        nextActionDetail: draft.nextActionDetail,
-        due: draft.due,
-        delivery: draft.delivery,
-        contactUserId: draft.contactUserId,
-        ownerUserIds: draft.ownerUserIds,
-        updated: "gerade eben",
-        steps: statusChanged && statusPresets[draft.status] ? buildSteps(draft.status) : project.steps,
-        statusHistory: historyEntry ? [...(project.statusHistory || []), historyEntry] : (project.statusHistory || [])
-      } : project));
-      addProjectMessage(projectId, statusChanged
-        ? `Neuer Projektstatus: ${draft.status}. Nächster Schritt: ${draft.nextAction}.`
-        : `Projektangaben wurden aktualisiert. Nächster Schritt: ${draft.nextAction}.`);
-      setNotice(statusChanged ? `Status „${draft.status}“ wurde gespeichert.` : "Projektangaben wurden aktualisiert.");
-    }
+      }];
+    });
+    const statusEntry = statusChanged ? [{
+      id: `status-${Date.now()}`,
+      status: draft.status,
+      note: draft.statusNote || draft.nextActionDetail || "",
+      byUserId: currentUser.id,
+      at: formatDateTime()
+    }] : [];
+    setProjects((current) => current.map((project) => project.id === projectId ? {
+      ...project,
+      status: draft.status,
+      statusTone: preset.tone || project.statusTone || "info",
+      progress: Number(draft.progress),
+      nextAction: draft.nextAction,
+      nextActionDetail: draft.nextActionDetail,
+      due: draft.due,
+      delivery: draft.delivery,
+      contactUserId: draft.contactUserId,
+      ownerUserIds: draft.ownerUserIds,
+      updated: "gerade eben",
+      steps: newSteps,
+      statusHistory: [...(project.statusHistory || []), ...statusEntry, ...workflowChanges]
+    } : project));
+    if (statusChanged) addProjectMessage(projectId, `Neuer Projektstatus: ${draft.status}. Nächster Schritt: ${draft.nextAction}.`);
+    else if (workflowChanges.length) addProjectMessage(projectId, `Projektverlauf aktualisiert: ${workflowChanges.map((entry) => entry.status).join(", ")}.`);
+    else addProjectMessage(projectId, `Projektangaben wurden aktualisiert. Nächster Schritt: ${draft.nextAction}.`);
+    setNotice(workflowChanges.length ? "Erledigt-Status im Projektverlauf gespeichert." : statusChanged ? `Status „${draft.status}“ wurde gespeichert.` : "Projektangaben wurden aktualisiert.");
+  }
 
   async function uploadDocument(projectId, file, meta = {}, companyIdOverride = null) {
       if (!file || !currentUser) return null;
@@ -391,7 +445,9 @@ export default function PortalApp() {
         request.description,
         request.format ? `Format: ${request.format}` : "",
         request.material ? `Material: ${request.material}` : "",
-        request.customerOrderNumber ? `Kunden-Bestellnummer: ${request.customerOrderNumber}` : ""
+        request.customerArticleNumber ? `Kundenartikel: ${request.customerArticleNumber}` : "",
+        request.supplierArticleNumber ? `Lieferantenartikel: ${request.supplierArticleNumber}` : "",
+        request.specialInstructions ? `Hinweise: ${request.specialInstructions}` : ""
       ].filter(Boolean);
       const project = {
         id,
@@ -410,6 +466,21 @@ export default function PortalApp() {
         quantity: request.quantity || "noch offen",
         specification: specificationParts.join(" · ") || "Details werden im persönlichen Gespräch geklärt.",
         customerOrderNumber: request.customerOrderNumber || "",
+        orderDate: request.orderDate || "",
+        buyerName: request.buyerName || "",
+        buyerEmail: request.buyerEmail || "",
+        buyerPhone: request.buyerPhone || "",
+        supplierNumber: request.supplierNumber || "",
+        offerNumber: request.offerNumber || "",
+        reference: request.reference || "",
+        customerArticleNumber: request.customerArticleNumber || "",
+        supplierArticleNumber: request.supplierArticleNumber || "",
+        unitPrice: request.unitPrice || "",
+        totalPrice: request.totalPrice || "",
+        deliveryAddress: request.deliveryAddress || "",
+        deliveryTerms: request.deliveryTerms || "",
+        paymentTerms: request.paymentTerms || "",
+        specialInstructions: request.specialInstructions || "",
         format: request.format || "",
         material: request.material || "",
         updated: "gerade eben",
@@ -697,6 +768,18 @@ function ProjectDetailView({ project, users, currentUser, messages, documents, o
                 <div><dt>Auflage</dt><dd>{project.quantity}</dd></div>
                 <div><dt>Liefertermin</dt><dd>{project.delivery}</dd></div>
                 {project.customerOrderNumber && <div><dt>Bestellnummer</dt><dd>{project.customerOrderNumber}</dd></div>}
+                {project.orderDate && <div><dt>Bestelldatum</dt><dd>{project.orderDate}</dd></div>}
+                {project.offerNumber && <div><dt>Angebotsnummer</dt><dd>{project.offerNumber}</dd></div>}
+                {project.reference && <div><dt>Referenz</dt><dd>{project.reference}</dd></div>}
+                {project.customerArticleNumber && <div><dt>Kundenartikel</dt><dd>{project.customerArticleNumber}</dd></div>}
+                {project.supplierArticleNumber && <div><dt>Unser Artikel</dt><dd>{project.supplierArticleNumber}</dd></div>}
+                {project.buyerName && <div><dt>Einkauf</dt><dd>{project.buyerName}{project.buyerEmail ? ` · ${project.buyerEmail}` : ""}{project.buyerPhone ? ` · ${project.buyerPhone}` : ""}</dd></div>}
+                {project.supplierNumber && <div><dt>Lieferantennummer</dt><dd>{project.supplierNumber}</dd></div>}
+                {project.unitPrice && <div><dt>Einzelpreis</dt><dd>{project.unitPrice}</dd></div>}
+                {project.totalPrice && <div><dt>Gesamtpreis</dt><dd>{project.totalPrice}</dd></div>}
+                {project.deliveryAddress && <div className="wide"><dt>Lieferadresse</dt><dd className="preserve-lines">{project.deliveryAddress}</dd></div>}
+                {project.deliveryTerms && <div><dt>Lieferbedingung</dt><dd>{project.deliveryTerms}</dd></div>}
+                {project.paymentTerms && <div><dt>Zahlungsbedingung</dt><dd>{project.paymentTerms}</dd></div>}
                 {project.format && <div><dt>Format</dt><dd>{project.format}</dd></div>}
                 <div className="wide"><dt>Ausführung</dt><dd>{project.specification}</dd></div>
                 <div><dt>druckkultur</dt><dd>{contact?.name}</dd></div>
@@ -762,7 +845,6 @@ function ProjectDetailView({ project, users, currentUser, messages, documents, o
 function ProjectControlPanel({ project, users, onSave }) {
   const customerUsers = users.filter((user) => user.type === "customer" && user.companyId === project.companyId);
   const internalUsers = users.filter((user) => user.type === "internal" && user.companyIds.includes(project.companyId));
-  const [customStatus, setCustomStatus] = useState("");
   const [draft, setDraft] = useState({
     status: project.status,
     progress: project.progress,
@@ -772,7 +854,8 @@ function ProjectControlPanel({ project, users, onSave }) {
     due: project.due,
     delivery: project.delivery,
     contactUserId: project.contactUserId,
-    ownerUserIds: project.ownerUserIds
+    ownerUserIds: project.ownerUserIds,
+    steps: normalizeWorkflowSteps(project.steps?.length ? project.steps : buildSteps(project.status))
   });
 
   useEffect(() => setDraft({
@@ -784,7 +867,8 @@ function ProjectControlPanel({ project, users, onSave }) {
     due: project.due,
     delivery: project.delivery,
     contactUserId: project.contactUserId,
-    ownerUserIds: project.ownerUserIds
+    ownerUserIds: project.ownerUserIds,
+    steps: normalizeWorkflowSteps(project.steps?.length ? project.steps : buildSteps(project.status))
   }), [project]);
 
   function changeStatus(status) {
@@ -792,22 +876,26 @@ function ProjectControlPanel({ project, users, onSave }) {
     setDraft((current) => ({
       ...current,
       status,
-      progress: preset?.progress ?? current.progress,
-      nextAction: preset?.next ?? current.nextAction,
-      nextActionDetail: preset?.detail ?? current.nextActionDetail,
-      due: status.includes("Freigabe") || status.includes("fehlen") || status.includes("erforderlich") ? "Bitte zeitnah" : current.due
+      progress: preset.progress,
+      nextAction: preset.next,
+      nextActionDetail: preset.detail,
+      due: status.includes("Freigabe") || status.includes("fehlen") ? "Bitte zeitnah" : status === "Geliefert" || status === "Abgeschlossen" ? "–" : current.due
     }));
   }
 
-  function applyCustomStatus() {
-    const value = customStatus.trim();
-    if (!value) return;
-    setDraft((current) => ({
-      ...current,
-      status: value,
-      statusNote: `Individueller Status: ${value}`
-    }));
-    setCustomStatus("");
+  function setStepCompleted(index, completed) {
+    setDraft((current) => {
+      const changed = current.steps.map((step, stepIndex) => stepIndex === index ? {
+        ...step,
+        completed,
+        completedAt: completed ? formatDate() : "",
+        state: completed ? "done" : "upcoming",
+        date: completed ? formatDate() : "offen"
+      } : step);
+      const steps = normalizeWorkflowSteps(changed);
+      const completedCount = steps.filter((step) => step.completed).length;
+      return { ...current, steps, progress: Math.round((completedCount / Math.max(steps.length, 1)) * 100) };
+    });
   }
 
   function toggleOwner(id) {
@@ -824,28 +912,32 @@ function ProjectControlPanel({ project, users, onSave }) {
       <div className="control-heading">
         <span className="eyebrow">Mitarbeiterbereich</span>
         <h2>Projekt steuern</h2>
-        <p>Status, nächster Schritt und Zuständigkeiten werden sofort in der Kundensicht übernommen.</p>
+        <p>Die vorhandenen Projektstatus bleiben fest definiert. Im Projektverlauf können einzelne Arbeitsschritte zusätzlich als erledigt markiert werden.</p>
       </div>
 
       <label className="form-field">
-        <span>Projektstatus auswählen</span>
-        <select value={statusPresets[draft.status] ? draft.status : ""} onChange={(event) => changeStatus(event.target.value)}>
-          {!statusPresets[draft.status] && <option value="">Individueller Status: {draft.status}</option>}
+        <span>Aktueller Projektstatus</span>
+        <select value={draft.status} onChange={(event) => changeStatus(event.target.value)}>
           {Object.keys(statusPresets).map((status) => <option value={status} key={status}>{status}</option>)}
         </select>
       </label>
 
-      <div className="custom-status-entry">
-        <label className="form-field">
-          <span>Eigenen Status vergeben</span>
-          <input value={customStatus} onChange={(event) => setCustomStatus(event.target.value)} placeholder="z. B. Kundentermin vereinbart" />
-        </label>
-        <button className="secondary-button" type="button" onClick={applyCustomStatus}>Status übernehmen</button>
-      </div>
-
-      <div className="selected-status-preview">
-        <span>Wird gespeichert als</span>
-        <strong>{draft.status}</strong>
+      <div className="workflow-editor">
+        <div className="workflow-editor-heading">
+          <div><strong>Projektverlauf</strong><span>Arbeitsschritte einzeln abschließen</span></div>
+          <b>{draft.steps.filter((step) => step.completed).length}/{draft.steps.length} erledigt</b>
+        </div>
+        <div className="workflow-editor-list">
+          {draft.steps.map((step, index) => (
+            <article className={classNames(step.completed && "completed", step.state === "current" && "current")} key={`${step.label}-${index}`}>
+              <span className="workflow-check">{step.completed ? <Icon name="check" size={17} /> : index + 1}</span>
+              <div><strong>{step.label}</strong><small>{step.completed ? `Erledigt am ${step.completedAt || step.date}` : step.state === "current" ? "Aktueller Arbeitsschritt" : "Noch offen"}</small></div>
+              <button type="button" className={step.completed ? "ghost-button compact" : "secondary-button compact"} onClick={() => setStepCompleted(index, !step.completed)}>
+                {step.completed ? "Zurücknehmen" : "Als erledigt markieren"}
+              </button>
+            </article>
+          ))}
+        </div>
       </div>
 
       <label className="form-field">
@@ -861,7 +953,7 @@ function ProjectControlPanel({ project, users, onSave }) {
         <textarea rows="4" value={draft.nextActionDetail} onChange={(event) => setDraft((current) => ({ ...current, nextActionDetail: event.target.value }))} />
       </label>
       <label className="form-field">
-        <span>Interne Notiz zur Statusänderung</span>
+        <span>Notiz zur Änderung</span>
         <textarea rows="3" value={draft.statusNote} onChange={(event) => setDraft((current) => ({ ...current, statusNote: event.target.value }))} placeholder="Optional – erscheint im Statusprotokoll" />
       </label>
       <div className="control-two">
@@ -883,7 +975,7 @@ function ProjectControlPanel({ project, users, onSave }) {
           </label>
         ))}
       </fieldset>
-      <button className="primary-button wide-button" onClick={() => onSave(draft)}>Status und Projekt speichern</button>
+      <button className="primary-button wide-button" onClick={() => onSave(draft)}>Projektänderungen speichern</button>
     </section>
   );
 }
@@ -1233,6 +1325,21 @@ function RequestView({ company, currentUser, onCreate }) {
         quantity: data.quantity || current.quantity,
         deadline: data.deadline || current.deadline,
         customerOrderNumber: data.customerOrderNumber || current.customerOrderNumber,
+        orderDate: data.orderDate || current.orderDate,
+        buyerName: data.buyerName || current.buyerName,
+        buyerEmail: data.buyerEmail || current.buyerEmail,
+        buyerPhone: data.buyerPhone || current.buyerPhone,
+        supplierNumber: data.supplierNumber || current.supplierNumber,
+        offerNumber: data.offerNumber || current.offerNumber,
+        reference: data.reference || current.reference,
+        customerArticleNumber: data.customerArticleNumber || current.customerArticleNumber,
+        supplierArticleNumber: data.supplierArticleNumber || current.supplierArticleNumber,
+        unitPrice: data.unitPrice || current.unitPrice,
+        totalPrice: data.totalPrice || current.totalPrice,
+        deliveryAddress: data.deliveryAddress || current.deliveryAddress,
+        deliveryTerms: data.deliveryTerms || current.deliveryTerms,
+        paymentTerms: data.paymentTerms || current.paymentTerms,
+        specialInstructions: data.specialInstructions || current.specialInstructions,
         format: data.format || current.format,
         material: data.material || current.material,
         documentType: currentUser.type === "internal" ? "Sonstiges" : "Bestellung"
@@ -1294,7 +1401,7 @@ function RequestView({ company, currentUser, onCreate }) {
                     <div>
                       <span className="eyebrow">Bestell-PDF automatisch auslesen</span>
                       <h2>PDF hochladen – Felder automatisch befüllen</h2>
-                      <p>Bestellnummer, Produkt, Menge, Format, Material und Termin werden erkannt und anschließend zur Kontrolle angezeigt.</p>
+                      <p>Bestellnummer, Bestelldatum, Einkaufskontakt, Artikelnummern, Menge, Termin, Lieferadresse und besondere Vorgaben werden erkannt und anschließend zur Kontrolle angezeigt.</p>
                     </div>
                   </div>
                   <button className="upload-zone compact-upload" type="button" onClick={() => analysisRef.current?.click()}>
@@ -1348,6 +1455,42 @@ function RequestView({ company, currentUser, onCreate }) {
                     <input value={request.customerOrderNumber} onChange={(event) => update("customerOrderNumber", event.target.value)} placeholder="z. B. PO-2026-1845" />
                   </label>
                   <label className="form-field">
+                    <span>Bestelldatum</span>
+                    <input value={request.orderDate} onChange={(event) => update("orderDate", event.target.value)} placeholder="z. B. 04.08.2026" />
+                  </label>
+                  <label className="form-field">
+                    <span>Einkäufer/in</span>
+                    <input value={request.buyerName} onChange={(event) => update("buyerName", event.target.value)} placeholder="Name aus der Bestellung" />
+                  </label>
+                  <label className="form-field">
+                    <span>E-Mail Einkauf</span>
+                    <input value={request.buyerEmail} onChange={(event) => update("buyerEmail", event.target.value)} placeholder="E-Mail aus der Bestellung" />
+                  </label>
+                  <label className="form-field">
+                    <span>Telefon Einkauf</span>
+                    <input value={request.buyerPhone} onChange={(event) => update("buyerPhone", event.target.value)} placeholder="Durchwahl aus der Bestellung" />
+                  </label>
+                  <label className="form-field">
+                    <span>Lieferantennummer</span>
+                    <input value={request.supplierNumber} onChange={(event) => update("supplierNumber", event.target.value)} placeholder="Kundenseitige Lieferantennummer" />
+                  </label>
+                  <label className="form-field">
+                    <span>Angebotsnummer</span>
+                    <input value={request.offerNumber} onChange={(event) => update("offerNumber", event.target.value)} placeholder="Optional" />
+                  </label>
+                  <label className="form-field">
+                    <span>Referenz</span>
+                    <input value={request.reference} onChange={(event) => update("reference", event.target.value)} placeholder="Optional" />
+                  </label>
+                  <label className="form-field">
+                    <span>Kunden-Artikelnummer</span>
+                    <input value={request.customerArticleNumber} onChange={(event) => update("customerArticleNumber", event.target.value)} placeholder="Artikelnummer des Kunden" />
+                  </label>
+                  <label className="form-field">
+                    <span>Unsere Artikelnummer</span>
+                    <input value={request.supplierArticleNumber} onChange={(event) => update("supplierArticleNumber", event.target.value)} placeholder="Falls in der Bestellung vorhanden" />
+                  </label>
+                  <label className="form-field">
                     <span>Ungefähre Menge</span>
                     <input value={request.quantity} onChange={(event) => update("quantity", event.target.value)} placeholder="z. B. 25.000 Stück" />
                   </label>
@@ -1362,6 +1505,30 @@ function RequestView({ company, currentUser, onCreate }) {
                   <label className="form-field">
                     <span>Wunschtermin</span>
                     <input type="date" value={request.deadline} onChange={(event) => update("deadline", event.target.value)} />
+                  </label>
+                  <label className="form-field">
+                    <span>Einzelpreis</span>
+                    <input value={request.unitPrice} onChange={(event) => update("unitPrice", event.target.value)} placeholder="Optional" />
+                  </label>
+                  <label className="form-field">
+                    <span>Gesamtpreis</span>
+                    <input value={request.totalPrice} onChange={(event) => update("totalPrice", event.target.value)} placeholder="Optional" />
+                  </label>
+                  <label className="form-field wide">
+                    <span>Lieferadresse</span>
+                    <textarea rows="3" value={request.deliveryAddress} onChange={(event) => update("deliveryAddress", event.target.value)} placeholder="Wird aus der Bestellung übernommen" />
+                  </label>
+                  <label className="form-field">
+                    <span>Lieferbedingung</span>
+                    <input value={request.deliveryTerms} onChange={(event) => update("deliveryTerms", event.target.value)} placeholder="Optional" />
+                  </label>
+                  <label className="form-field">
+                    <span>Zahlungsbedingung</span>
+                    <input value={request.paymentTerms} onChange={(event) => update("paymentTerms", event.target.value)} placeholder="Optional" />
+                  </label>
+                  <label className="form-field wide">
+                    <span>Besondere Bestellhinweise</span>
+                    <textarea rows="3" value={request.specialInstructions} onChange={(event) => update("specialInstructions", event.target.value)} placeholder="Muster, Anlieferung, Kennzeichnung oder weitere Vorgaben" />
                   </label>
                   <label className="form-field wide">
                     <span>Beschreibung und Besonderheiten</span>

@@ -144,3 +144,8 @@ Die Vorführversion verwendet IndexedDB im Browser. Im Produktivbetrieb:
 - Telefon über vorhandenes Softphone oder Telefonanlagen-API auslösen
 - Teams über Deep Link oder Microsoft Graph anbinden
 - Status offen, angenommen, nicht erreicht und erledigt vorsehen
+
+
+## Vertrauliche Bestellunterlagen
+
+Bestell-PDFs dürfen in der Produktivversion nicht in Demodaten, Logs oder GitHub-Repositories übernommen werden. Für die KI-Auswertung sind serverseitige Verarbeitung, kurze Aufbewahrungsfristen, Zugriffskontrollen und eine nachvollziehbare Löschung vorzusehen.

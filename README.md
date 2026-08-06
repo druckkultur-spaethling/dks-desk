@@ -1,24 +1,16 @@
-# druckkultur desk – Vorführversion 0.4
+# druckkultur desk – Vorführversion 2.1
 
-Next.js-Webapp für einen persönlichen digitalen Projektraum zwischen druckkultur und ihren Kunden. Die Anwendung ist bewusst **kein Online-Shop**. Sie zeigt persönliche Beratung, schnelle Reaktion, Projekte, Status, Nachrichten, Dateien, Freigaben und Gesprächswünsche in einem gemeinsamen Arbeitsraum.
+Next.js-Webapp für einen persönlichen digitalen Projektraum zwischen druckkultur und ihren Kunden. Die Anwendung ist bewusst kein Online-Shop. Sie verbindet persönliche Beratung, Projekte, Nachrichten, Dokumente, Freigaben und Gesprächswünsche in einem gemeinsamen Arbeitsraum.
 
-## Neu in Version 0.4
+## Änderungen in Version 2.1
 
-- Mitarbeiter können zahlreiche Druckerei-Status auswählen
-- zusätzlicher eigener Projektstatus kann frei eingegeben werden
-- jede Statusänderung wird mit Mitarbeiter, Zeitpunkt und Notiz protokolliert
-- Button **Projekt erstellen** direkt in der Projektübersicht
-- Dokumente können jederzeit in jedem Projekt hochgeladen werden
-- kundenseitige Dokumentarten: Druckdaten, Anfrage, Bestellung, AB-Mahnung, Liefermahnung, Sonstiges
-- mitarbeiterseitige Dokumentarten: Angebot, AB, Freigabedaten, Lieferschein, Sonstiges
-- Dokumentart kann bereits beim Erstellen eines Projekts gewählt werden
-- Bestell-PDF kann automatisch ausgewertet und in Projektfelder übernommen werden
-- echte OpenAI-Auswertung über eine serverseitige API-Route möglich
-- ohne API-Schlüssel steht eine deutlich gekennzeichnete Vorführanalyse bereit
-- Nachrichtenansicht öffnet nicht mehr automatisch die zuletzt verwendete Unterhaltung
-- eigener Button **Neue Nachricht** mit Auswahl von Person oder Projekt
-- Gesprächswunsch wahlweise über Telefon oder Microsoft Teams
-- Teams-Konto kann in den Firmeneinstellungen je Benutzer hinterlegt werden
+- ursprüngliche feste Liste der Projektstatus wiederhergestellt
+- keine frei erfundenen oder zusätzlich erweiterten Status mehr
+- jeder Schritt im Projektverlauf kann durch einen druckkultur-Mitarbeiter als erledigt markiert oder wieder geöffnet werden
+- Erledigt-Markierungen erscheinen im Statusprotokoll und in der Kundensicht
+- Bestell-PDF-Auswertung um Einkaufskontakt, Lieferantennummer, Angebotsnummer, Referenz, Artikelnummern, Preise, Lieferadresse, Liefer- und Zahlungsbedingungen sowie besondere Vorgaben erweitert
+- vertrauliche Testbestellungen sind nicht im Repository und nicht in den Demodaten enthalten
+- neuer Browser-Speicherstand verhindert, dass ältere Zusatzstatus weiter angezeigt werden
 
 ## Demo-Zugänge
 
@@ -49,54 +41,70 @@ heinz@druckkultur.demo
 mirco@druckkultur.demo
 ```
 
-## Status als Mitarbeiter vergeben
+## Arbeitsschritt als erledigt markieren
 
 1. Als druckkultur-Mitarbeiter anmelden.
 2. Firma und Projekt öffnen.
-3. Rechts im Bereich **Projekt steuern** einen Status auswählen.
-4. Alternativ unter **Eigenen Status vergeben** eine freie Bezeichnung eintragen.
-5. Nächsten Schritt, Kundenerklärung, Termin und optionale Statusnotiz ergänzen.
-6. **Status und Projekt speichern** anklicken.
+3. Rechts den Bereich **Projekt steuern** öffnen.
+4. Im Abschnitt **Projektverlauf** beim gewünschten Arbeitsschritt auf **Als erledigt markieren** klicken.
+5. Optional eine Notiz ergänzen.
+6. **Projektänderungen speichern** anklicken.
 
-Der neue Status ist sofort in der Kundensicht sichtbar und erscheint im Statusprotokoll.
+Der Schritt erhält ein Häkchen und ein Erledigt-Datum. Die Änderung wird im Statusprotokoll dokumentiert und ist danach auch für den Kunden sichtbar. Mit **Zurücknehmen** kann eine versehentliche Markierung wieder geöffnet werden.
+
+Die verfügbaren Projektstatus bleiben fest vorgegeben. Der Status kann weiterhin passend zum aktuellen Projektstand gewählt werden; die Liste selbst kann nicht erweitert werden.
 
 ## Bestell-PDF mit KI auswerten
 
-Die App enthält die Route:
+Die App enthält die serverseitige Route:
 
 ```text
 /portal/api/analyze-order
 ```
 
-Für eine echte KI-Auswertung in Webflow Cloud zwei Environment Variables ergänzen:
+Für eine echte KI-Auswertung in Webflow Cloud:
 
 ```text
 OPENAI_API_KEY=dein_api_schluessel
 OPENAI_MODEL=gpt-5-mini
 ```
 
-`OPENAI_API_KEY` bleibt ausschließlich auf dem Server. Er darf niemals als `NEXT_PUBLIC_...` angelegt werden.
+`OPENAI_API_KEY` bleibt ausschließlich auf dem Server und darf nicht als `NEXT_PUBLIC_...` angelegt werden.
 
-Ohne API-Schlüssel funktioniert der Vorführablauf trotzdem. Die Anwendung kennzeichnet dann sichtbar, dass realistische Musterdaten eingesetzt werden und keine echte PDF-Inhaltsanalyse stattgefunden hat.
+Ohne API-Schlüssel verwendet die App ausschließlich deutlich gekennzeichnete, neutrale Musterdaten. Es werden keine vertraulichen Beispieldaten mitgeliefert.
+
+Die Auswertung versucht folgende Felder zu erkennen:
+
+- Bestellnummer und Bestelldatum
+- Einkaufskontakt, E-Mail und Durchwahl
+- Lieferantennummer, Angebotsnummer und Referenz
+- Produktbezeichnung und Artikelnummern beider Seiten
+- Menge, Einzelpreis und Gesamtpreis
+- Liefertermin und abweichende Lieferadresse
+- Liefer- und Zahlungsbedingungen
+- hervorgehobene Muster-, Kennzeichnungs- und Anliefervorgaben
+
+Alle erkannten Daten bleiben vor dem Anlegen des Projekts bearbeitbar. Die persönliche Prüfung durch druckkultur bleibt erforderlich.
 
 ## Empfohlener Vorführablauf
 
 1. Als `maria@vitanova.demo` anmelden.
 2. Unter **Projekte** auf **Projekt erstellen** klicken.
-3. Ein Bestell-PDF auswählen und **Bestellung automatisch auslesen** anklicken.
-4. Erkannte Felder kontrollieren und das PDF als **Bestellung** zuordnen.
-5. Unter **Nachrichten** auf **Neue Nachricht** klicken und Andreas auswählen.
-6. Unter **Kontakte** einen Telefon- oder Teams-Gesprächswunsch absenden.
-7. Abmelden und als `andreas@druckkultur.demo` anmelden.
-8. Gesprächswunsch im Popup öffnen.
-9. Neues Projekt öffnen, Status ändern und ein Angebot oder Freigabedaten hochladen.
-10. Wieder als Maria anmelden und Kundensicht, Statusprotokoll und Dokumente prüfen.
+3. Ein Bestell-PDF auswählen und automatisch auslesen lassen.
+4. Angaben kontrollieren und das PDF als **Bestellung** zuordnen.
+5. Eine Nachricht oder einen Telefon-/Teams-Gesprächswunsch absenden.
+6. Als `andreas@druckkultur.demo` anmelden.
+7. Rückrufwunsch im Popup öffnen.
+8. Das neue Projekt öffnen.
+9. Im Projektverlauf einen Arbeitsschritt als erledigt markieren und speichern.
+10. Ein Angebot oder Freigabedaten im Dokumentenbereich hochladen.
+11. Wieder als Kunde anmelden und die aktualisierte Kundensicht zeigen.
 
 ## Dateiablage im Vorführmodus
 
-Metadaten, Nachrichten, Projekte und Rechte werden in `localStorage` gespeichert. Hochgeladene Dateien werden in `IndexedDB` gespeichert. Sie stehen daher im gleichen Browser auch nach dem Neuladen wieder zur Verfügung.
+Metadaten, Nachrichten, Projekte und Rechte werden in `localStorage` gespeichert. Hochgeladene Dateien werden in `IndexedDB` gespeichert und stehen im gleichen Browser nach dem Neuladen weiterhin zur Verfügung.
 
-Diese Vorführung ist nicht für vertrauliche Echtdaten bestimmt. Für den Mehrbenutzerbetrieb sind Datenbank, geschützte Dateiablage, sichere Anmeldung und serverseitige Rechteprüfung erforderlich.
+Die Vorführversion ist nicht für den realen Austausch vertraulicher Kundendaten bestimmt. Für den Produktivbetrieb werden eine zentrale Datenbank, geschützte Dateiablage, serverseitige Rechteprüfung, Protokollierung und ein Datenschutzkonzept benötigt.
 
 ## GitHub und Webflow Cloud
 
@@ -106,31 +114,24 @@ Wenn `package.json` direkt auf der ersten Ebene des GitHub-Repositorys liegt:
 Root directory: ./
 ```
 
-Erforderliche Variable für die Einbindung unter `/portal`:
+Für die Einbindung unter `/portal`:
 
 ```text
 WEBFLOW_CLOUD_MOUNT_PATH=/portal
 ```
 
-Optional für echte PDF-KI:
-
-```text
-OPENAI_API_KEY=...
-OPENAI_MODEL=gpt-5-mini
-```
-
-Nach dem Hochladen der neuen Dateien einen neuen Commit auf `main` erstellen. Webflow Cloud startet danach normalerweise automatisch ein Deployment.
+Nach dem Hochladen der neuen Dateien einen Commit auf `main` erstellen. Webflow Cloud startet danach normalerweise automatisch ein neues Deployment.
 
 ## Projektstruktur
 
 ```text
 app/
-  api/analyze-order/route.js  serverseitige PDF-KI-Auswertung
-  globals.css                 Gestaltung und Responsive Design
+  api/analyze-order/route.js
+  globals.css
   layout.js
   page.js
 components/
-  PortalApp.jsx               Funktionslogik und Ansichten
+  PortalApp.jsx
   Icon.jsx
 data/
   mock-data.js
@@ -146,7 +147,7 @@ wrangler.jsonc
 ## Für den echten Betrieb noch erforderlich
 
 - serverseitige Anmeldung und sichere Sitzungen
-- relationale Datenbank mit Mandantentrennung
+- relationale Datenbank mit strikter Mandantentrennung
 - serverseitige Rechteprüfung für jede Aktion
 - geschützte Dateiablage mit Virenscan
 - Benachrichtigungen per E-Mail, Teams oder Push
