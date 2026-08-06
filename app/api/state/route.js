@@ -9,6 +9,14 @@ const STATE_ID = "main";
 const INSTANCE_KEY = "instance_id";
 const MAX_STATE_BYTES = 1_800_000;
 
+function apiMeta(request) {
+  const url = new URL(request.url);
+  return {
+    apiHost: url.host,
+    apiBase: url.pathname.replace(/\/api\/state\/?$/, "") || ""
+  };
+}
+
 function json(data, status = 200, extraHeaders = {}) {
   return Response.json(data, {
     status,
@@ -96,7 +104,7 @@ function bookmarkHeaders(session) {
   return bookmark ? { "X-D1-Bookmark": bookmark } : {};
 }
 
-export async function GET() {
+export async function GET(request) {
   try {
     const db = getDb();
     const session = primarySession(db);
@@ -107,7 +115,8 @@ export async function GET() {
       revision: Number(row.revision),
       updatedAt: row.updated_at,
       instanceId,
-      storage: "webflow-sqlite-primary"
+      storage: "webflow-sqlite-primary",
+      ...apiMeta(request)
     }, 200, bookmarkHeaders(session));
   } catch (error) {
     console.error("Shared state GET failed", error);
@@ -137,7 +146,8 @@ export async function PUT(request) {
         state: JSON.parse(current.data),
         revision: currentRevision,
         updatedAt: current.updated_at,
-        instanceId
+        instanceId,
+        ...apiMeta(request)
       }, 409, bookmarkHeaders(session));
     }
 
@@ -155,7 +165,8 @@ export async function PUT(request) {
         state: JSON.parse(latest.data),
         revision: Number(latest.revision),
         updatedAt: latest.updated_at,
-        instanceId
+        instanceId,
+        ...apiMeta(request)
       }, 409, bookmarkHeaders(session));
     }
 
@@ -176,7 +187,8 @@ export async function PUT(request) {
       revision: Number(verified.revision),
       updatedAt: verified.updated_at || now,
       instanceId,
-      storage: "webflow-sqlite-primary"
+      storage: "webflow-sqlite-primary",
+      ...apiMeta(request)
     }, 200, bookmarkHeaders(session));
   } catch (error) {
     console.error("Shared state PUT failed", error);
@@ -184,7 +196,7 @@ export async function PUT(request) {
   }
 }
 
-export async function DELETE() {
+export async function DELETE(request) {
   try {
     const db = getDb();
     const session = primarySession(db);
@@ -199,7 +211,7 @@ export async function DELETE() {
     ).bind(STATE_ID, JSON.stringify(seed), nextRevision, now).run();
     await session.prepare("INSERT INTO sync_audit (revision, actor_user_id, event, created_at) VALUES (?, ?, ?, ?)")
       .bind(nextRevision, null, "Gemeinsame Demo zurückgesetzt", now).run();
-    return json({ state: seed, revision: nextRevision, updatedAt: now, instanceId }, 200, bookmarkHeaders(session));
+    return json({ state: seed, revision: nextRevision, updatedAt: now, instanceId, ...apiMeta(request) }, 200, bookmarkHeaders(session));
   } catch (error) {
     console.error("Shared state reset failed", error);
     return json({ error: error.message || "Gemeinsame Demo konnte nicht zurückgesetzt werden.", code: error.code || "STATE_RESET_FAILED" }, 500);

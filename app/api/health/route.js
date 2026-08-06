@@ -17,7 +17,7 @@ function response(data, status = 200) {
   });
 }
 
-export async function GET() {
+export async function GET(request) {
   try {
     const { env } = getCloudflareContext();
     const hasDb = Boolean(env?.DB);
@@ -44,6 +44,7 @@ export async function GET() {
     const stateRow = await db.prepare("SELECT revision, updated_at FROM app_state WHERE id = 'main'").first();
     const instanceRow = await db.prepare("SELECT value FROM app_meta WHERE key = 'instance_id'").first();
 
+    const requestUrl = new URL(request.url);
     return response({
       ok: true,
       database: true,
@@ -52,7 +53,9 @@ export async function GET() {
       updatedAt: stateRow?.updated_at || null,
       instanceId: instanceRow?.value || generated,
       storage: "webflow-sqlite-primary",
-      timestamp: now
+      timestamp: now,
+      apiHost: requestUrl.host,
+      apiBase: requestUrl.pathname.replace(/\/api\/health\/?$/, "") || ""
     });
   } catch (error) {
     console.error("Portal health check failed", error);

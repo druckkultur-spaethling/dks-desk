@@ -11,8 +11,8 @@ import {
   initialUsers
 } from "@/data/mock-data";
 
-const APP_VERSION = "2.10";
-const SESSION_KEY = "druckkultur-desk-session-v2.10";
+const APP_VERSION = "2.11";
+const SESSION_KEY = "druckkultur-desk-session-v2.11";
 
 let resolvedApiBase = null;
 let lastApiAttempts = [];
@@ -22,12 +22,15 @@ function normalizeApiBase(value = "") {
   return clean ? `/${clean}` : "";
 }
 
-function runtimeApiBases() {
-  if (typeof window === "undefined") return [""];
+function runtimeApiBase() {
+  if (typeof window === "undefined") return "";
+
+  // Bei einer an eine Webflow-Seite montierten App entspricht die beim Laden
+  // sichtbare Route dem Mount-Pfad, hier also /app. Ein Fallback auf /api ist
+  // absichtlich verboten, weil dort eine andere Environment und damit eine
+  // andere Datenbank gebunden sein kann.
   const pathname = window.location.pathname.replace(/\/+$/g, "");
-  const currentPath = pathname && pathname !== "/" ? normalizeApiBase(pathname) : "";
-  const configuredPath = normalizeApiBase(process.env.NEXT_PUBLIC_BASE_PATH || "");
-  return [...new Set([currentPath, configuredPath, ""])];
+  return pathname && pathname !== "/" ? normalizeApiBase(pathname) : "";
 }
 
 function makeApiUrl(base, endpoint) {
@@ -36,29 +39,11 @@ function makeApiUrl(base, endpoint) {
 }
 
 async function fetchPortalApi(endpoint, options = {}) {
-  const candidates = resolvedApiBase === null
-    ? runtimeApiBases()
-    : [...new Set([resolvedApiBase, ...runtimeApiBases()])];
-  let lastResponse = null;
-  const attempts = [];
-  for (const base of candidates) {
-    const url = makeApiUrl(base, endpoint);
-    attempts.push(url);
-    try {
-      const response = await fetch(url, options);
-      lastResponse = response;
-      if (response.status !== 404) {
-        resolvedApiBase = base;
-        lastApiAttempts = attempts;
-        return response;
-      }
-    } catch (error) {
-      lastApiAttempts = attempts;
-      if (candidates[candidates.length - 1] === base) throw error;
-    }
-  }
-  lastApiAttempts = attempts;
-  return lastResponse || new Response("API route not found", { status: 404 });
+  const base = resolvedApiBase ?? runtimeApiBase();
+  resolvedApiBase = base;
+  const url = makeApiUrl(base, endpoint);
+  lastApiAttempts = [url];
+  return fetch(url, options);
 }
 
 
@@ -342,22 +327,36 @@ export default function PortalApp() {
   const [lastSyncedAt, setLastSyncedAt] = useState("");
   const [sharedRevision, setSharedRevision] = useState(0);
   const [databaseInstanceId, setDatabaseInstanceId] = useState("");
+  const [apiBasePath, setApiBasePath] = useState("");
+  const [apiHost, setApiHost] = useState("");
   const [messageTargetUserId, setMessageTargetUserId] = useState(null);
   const [callbackTargetUserId, setCallbackTargetUserId] = useState(null);
   const [dismissedCallbacks, setDismissedCallbacks] = useState([]);
   const revisionRef = useRef(0);
+  const databaseInstanceRef = useRef("");
   const lastSerializedRef = useRef("");
   const saveTimerRef = useRef(null);
   const savingRef = useRef(false);
   const lastEventRef = useRef("Daten aktualisiert");
 
   function applyRemoteState(payload, announce = false) {
+    const incomingInstanceId = String(payload.instanceId || "");
+    if (databaseInstanceRef.current && incomingInstanceId && databaseInstanceRef.current !== incomingInstanceId) {
+      const error = `Datenbankwechsel erkannt: ${databaseInstanceRef.current.slice(0, 8)} → ${incomingInstanceId.slice(0, 8)}. Die App stoppt die Synchronisierung, damit keine Daten zwischen zwei Environments vermischt werden.`;
+      setSyncStatus("error");
+      setSyncError(error);
+      setNotice(error);
+      return false;
+    }
+    if (incomingInstanceId) databaseInstanceRef.current = incomingInstanceId;
     const normalized = normalizeSharedState(payload.state);
     const serialized = serializeSharedState(normalized);
     lastSerializedRef.current = serialized;
     revisionRef.current = Number(payload.revision || 1);
     setSharedRevision(Number(payload.revision || 1));
-    setDatabaseInstanceId(String(payload.instanceId || ""));
+    setDatabaseInstanceId(incomingInstanceId);
+    setApiBasePath(String(payload.apiBase || resolvedApiBase || runtimeApiBase()));
+    setApiHost(String(payload.apiHost || (typeof window !== "undefined" ? window.location.host : "")));
     setCompanies(normalized.companies);
     setUsers(normalized.users);
     setProjects(normalized.projects);
@@ -368,6 +367,7 @@ export default function PortalApp() {
     setSyncStatus("online");
     setSyncError("");
     if (announce) setNotice("Neue Änderungen von einem anderen Gerät wurden geladen.");
+    return true;
   }
 
   function stateApiEndpoint() {
@@ -401,8 +401,17 @@ export default function PortalApp() {
   async function loadSharedState(announce = false) {
     const response = await fetchPortalApi(stateApiEndpoint(), { cache: "no-store", headers: { "Accept": "application/json" } });
     const payload = await readJsonResponse(response);
-    if (Number(payload.revision || 0) > revisionRef.current || !lastSerializedRef.current) applyRemoteState(payload, announce);
-    else { setSyncStatus("online"); setSyncError(""); setLastSyncedAt(payload.updatedAt || lastSyncedAt); }
+    if (Number(payload.revision || 0) > revisionRef.current || !lastSerializedRef.current) {
+      if (applyRemoteState(payload, announce) === false) throw new Error("Die API hat während der Sitzung auf eine andere Datenbank gewechselt.");
+    } else {
+      const incomingInstanceId = String(payload.instanceId || "");
+      if (databaseInstanceRef.current && incomingInstanceId && databaseInstanceRef.current !== incomingInstanceId) {
+        throw new Error(`Datenbankwechsel erkannt: ${databaseInstanceRef.current.slice(0, 8)} → ${incomingInstanceId.slice(0, 8)}.`);
+      }
+      setApiBasePath(String(payload.apiBase || resolvedApiBase || runtimeApiBase()));
+      setApiHost(String(payload.apiHost || (typeof window !== "undefined" ? window.location.host : "")));
+      setSyncStatus("online"); setSyncError(""); setLastSyncedAt(payload.updatedAt || lastSyncedAt);
+    }
     return payload;
   }
 
@@ -432,7 +441,7 @@ export default function PortalApp() {
         }
         const response = await fetchPortalApi(stateApiEndpoint(), { cache: "no-store", headers: { "Accept": "application/json" } });
         const payload = await readJsonResponse(response);
-        if (!cancelled) applyRemoteState(payload);
+        if (!cancelled && applyRemoteState(payload) === false) throw new Error("Die API hat auf eine andere Datenbank gewechselt.");
       } catch (error) {
         console.error("Gemeinsamer Datenstand konnte nicht geladen werden.", error);
         if (!cancelled) {
@@ -486,9 +495,16 @@ export default function PortalApp() {
           return;
         }
         if (!response.ok) throw new Error(payload.error || "Änderungen konnten nicht gespeichert werden.");
+        const responseInstanceId = String(payload.instanceId || "");
+        if (databaseInstanceRef.current && responseInstanceId && databaseInstanceRef.current !== responseInstanceId) {
+          throw new Error(`Speichern wurde von einer anderen Datenbank beantwortet: ${databaseInstanceRef.current.slice(0, 8)} → ${responseInstanceId.slice(0, 8)}.`);
+        }
+        if (responseInstanceId) databaseInstanceRef.current = responseInstanceId;
         revisionRef.current = Number(payload.revision);
         setSharedRevision(Number(payload.revision));
-        setDatabaseInstanceId(String(payload.instanceId || ""));
+        setDatabaseInstanceId(responseInstanceId);
+        setApiBasePath(String(payload.apiBase || resolvedApiBase || runtimeApiBase()));
+        setApiHost(String(payload.apiHost || (typeof window !== "undefined" ? window.location.host : "")));
         lastSerializedRef.current = serialized;
         setLastSyncedAt(payload.updatedAt || new Date().toISOString());
 
@@ -507,7 +523,14 @@ export default function PortalApp() {
           applyRemoteState(verified, false);
         } else {
           setSharedRevision(Number(verified.revision || payload.revision));
-          setDatabaseInstanceId(String(verified.instanceId || payload.instanceId || ""));
+          const verifiedInstanceId = String(verified.instanceId || payload.instanceId || "");
+          if (databaseInstanceRef.current && verifiedInstanceId && databaseInstanceRef.current !== verifiedInstanceId) {
+            throw new Error(`Bestätigung kam aus einer anderen Datenbank: ${databaseInstanceRef.current.slice(0, 8)} → ${verifiedInstanceId.slice(0, 8)}.`);
+          }
+          if (verifiedInstanceId) databaseInstanceRef.current = verifiedInstanceId;
+          setDatabaseInstanceId(verifiedInstanceId);
+          setApiBasePath(String(verified.apiBase || payload.apiBase || resolvedApiBase || runtimeApiBase()));
+          setApiHost(String(verified.apiHost || payload.apiHost || (typeof window !== "undefined" ? window.location.host : "")));
           setLastSyncedAt(verified.updatedAt || payload.updatedAt || new Date().toISOString());
           setSyncStatus("online");
           setSyncError("");
@@ -1093,7 +1116,7 @@ export default function PortalApp() {
   return (
     <div className="portal-root" style={companyStyle}>
       <a className="skip-link" href="#main-content">Zum Hauptinhalt</a>
-      <Sidebar navItems={navItems} activeView={activeView} currentUser={currentUser} currentCompany={currentCompany} companies={accessibleCompanies} unreadByCompany={unreadByCompany} newProjectsByCompany={newProjectsByCompany} callbackByCompany={pendingCallbacksByCompany} mobileOpen={mobileMenuOpen} onNavigate={navigate} onSwitchCompany={switchCompany} onClose={() => setMobileMenuOpen(false)} onLogout={logout} onReset={resetDemo} onAvailabilityChange={updateAvailability} syncStatus={syncStatus} syncError={syncError} lastSyncedAt={lastSyncedAt} onRetrySync={retrySync} sharedRevision={sharedRevision} databaseInstanceId={databaseInstanceId} />
+      <Sidebar navItems={navItems} activeView={activeView} currentUser={currentUser} currentCompany={currentCompany} companies={accessibleCompanies} unreadByCompany={unreadByCompany} newProjectsByCompany={newProjectsByCompany} callbackByCompany={pendingCallbacksByCompany} mobileOpen={mobileMenuOpen} onNavigate={navigate} onSwitchCompany={switchCompany} onClose={() => setMobileMenuOpen(false)} onLogout={logout} onReset={resetDemo} onAvailabilityChange={updateAvailability} syncStatus={syncStatus} syncError={syncError} lastSyncedAt={lastSyncedAt} onRetrySync={retrySync} sharedRevision={sharedRevision} databaseInstanceId={databaseInstanceId} apiBasePath={apiBasePath} apiHost={apiHost} />
       <div className="app-column">
         <Topbar currentUser={currentUser} currentCompany={currentCompany} searchTerm={searchTerm} unreadCount={unreadByCompany[currentCompany?.id] || 0} callbackCount={pendingCallbacksForUser.length} onSearch={setSearchTerm} onMenu={() => setMobileMenuOpen(true)} onMessages={() => navigate("messages")} onCallbacks={() => navigate("callbacks")} onLogout={logout} syncStatus={syncStatus} syncError={syncError} onRetrySync={retrySync} sharedRevision={sharedRevision} databaseInstanceId={databaseInstanceId} />
         <main id="main-content" tabIndex="-1" className="main-content">
@@ -1129,7 +1152,7 @@ function LoginScreen({ users, companies, onLogin }) {
   return <main className="login-page"><section className="login-brand"><div className="login-logo"><Icon name="print" size={40} /><span><strong>druckkultur</strong><small>desk</small></span></div><p className="eyebrow">Ihre externe Druckabteilung</p><h1>Direkter Kontakt. Alle Printprojekte an einem Ort.</h1><p>Beratung, Nachrichten, Dateien, Freigaben, Rückrufe und Projektsteuerung in einem gemeinsamen Arbeitsraum.</p><div className="login-features"><span><Icon name="users" size={22} /> Persönliche Ansprechpartner</span><span><Icon name="fileCheck" size={22} /> Zentrale Dokumentablage für alle Geräte</span><span><Icon name="phone" size={22} /> Sichtbare Rückrufwünsche</span></div></section><section className="login-panel"><div className="login-card"><div className="login-tabs"><button className={mode === "customer" ? "active" : ""} onClick={() => { setMode("customer"); setError(""); }}>Kundenlogin</button><button className={mode === "internal" ? "active" : ""} onClick={() => { setMode("internal"); setError(""); }}>Mitarbeiterlogin</button></div><div className="login-heading"><span className="eyebrow">Vorführmodus</span><h2>{mode === "customer" ? "Als Kunde anmelden" : "Als druckkultur-Mitarbeiter anmelden"}</h2></div><form onSubmit={submit}><label className="form-field"><span>E-Mail-Adresse</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label><label className="form-field"><span>Passwort</span><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>{error && <p className="form-error">{error}</p>}<button className="primary-button wide-button" type="submit">Anmelden <Icon name="arrow" size={19} /></button></form><div className="demo-accounts"><strong>Zugang auswählen</strong><p>Passwort ist bei allen Konten <code>demo</code>.</p><div className="demo-account-list">{candidates.map((user) => { const company = getCompany(companies, user.companyId); return <button key={user.id} onClick={() => { setEmail(user.email); setPassword("demo"); }}><span className="avatar">{user.initials}</span><span><strong>{user.name}</strong><small>{company ? `${company.shortName} · ` : ""}{user.roleLabel}</small></span></button>; })}</div></div><p className="demo-note"><Icon name="shield" size={17} />Firmen, Projekte, Nachrichten und Dokumente werden gemeinsam in Webflow Cloud gespeichert und auf mehreren Geräten automatisch synchronisiert.</p></div></section></main>;
 }
 
-function Sidebar({ navItems, activeView, currentUser, currentCompany, companies, unreadByCompany, newProjectsByCompany, callbackByCompany, mobileOpen, onNavigate, onSwitchCompany, onClose, onLogout, onReset, onAvailabilityChange, syncStatus, syncError, lastSyncedAt, onRetrySync, sharedRevision, databaseInstanceId }) {
+function Sidebar({ navItems, activeView, currentUser, currentCompany, companies, unreadByCompany, newProjectsByCompany, callbackByCompany, mobileOpen, onNavigate, onSwitchCompany, onClose, onLogout, onReset, onAvailabilityChange, syncStatus, syncError, lastSyncedAt, onRetrySync, sharedRevision, databaseInstanceId, apiBasePath, apiHost }) {
   const availability = availabilityOptions[currentUser.availabilityStatus || "available"];
   const syncLabel = syncStatus === "saving" ? "Wird gespeichert …" : syncStatus === "error" ? "Verbindung unterbrochen" : syncStatus === "loading" ? "Daten werden geladen …" : "Gemeinsam gespeichert";
   const syncTime = lastSyncedAt ? new Date(lastSyncedAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }) : "";
@@ -1161,7 +1184,7 @@ function Sidebar({ navItems, activeView, currentUser, currentCompany, companies,
       <div className="sidebar-footer">
         <div className="signed-in-user"><span className="avatar">{currentUser.initials}</span><span><strong>{currentUser.name}</strong><small>{currentUser.roleLabel}</small></span></div>
         {currentUser.type === "internal" && <label className={classNames("availability-select", availability.tone)}><span><i />Eigener Status</span><select value={currentUser.availabilityStatus || "available"} onChange={(event) => onAvailabilityChange(event.target.value)}>{Object.entries(availabilityOptions).map(([value, option]) => <option value={value} key={value}>{option.label}</option>)}</select><small>{availability.description}</small></label>}
-        <button type="button" className={classNames("sync-status", syncStatus)} onClick={onRetrySync} title={syncError || "Verbindung zur gemeinsamen Datenbank prüfen"}><i /><span><strong>{syncLabel}</strong>{syncStatus === "error" && syncError ? <small>{syncError}</small> : <small>{syncTime ? `Stand ${syncTime} Uhr` : ""}{sharedRevision ? ` · Datenstand #${sharedRevision}` : ""}{databaseInstanceId ? ` · DB ${databaseInstanceId.slice(0, 8)}` : ""}</small>}</span></button>
+        <button type="button" className={classNames("sync-status", syncStatus)} onClick={onRetrySync} title={syncError || "Verbindung zur gemeinsamen Datenbank prüfen"}><i /><span><strong>{syncLabel}</strong>{syncStatus === "error" && syncError ? <small>{syncError}</small> : <small>{syncTime ? `Stand ${syncTime} Uhr` : ""}{sharedRevision ? ` · Datenstand #${sharedRevision}` : ""}{databaseInstanceId ? ` · DB ${databaseInstanceId.slice(0, 8)}` : ""}{apiBasePath || apiHost ? ` · API ${apiHost || ""}${apiBasePath || "/"}` : ""}</small>}</span></button>
         <div className="sidebar-version">Version {APP_VERSION}</div>
         <div className="sidebar-footer-actions"><button onClick={onLogout}>Abmelden</button>{currentUser.type === "internal" && currentUser.rights.manageCompanies && <button onClick={onReset}>Gemeinsame Demo zurücksetzen</button>}</div>
       </div>
